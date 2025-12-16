@@ -1,0 +1,65 @@
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-12-10 20:24:01,108 - api - INFO - Incoming request: GET / from 127.0.0.1
+2025-12-10 20:24:01,108 - api - INFO - Headers: Origin=none, Content-Type=none
+2025-12-10 20:24:01,109 - api - INFO - Response status: 200
+INFO:     127.0.0.1:34104 - "GET / HTTP/1.1" 200 OK
+2025-12-10 20:24:31,185 - api - INFO - Incoming request: GET / from 127.0.0.1
+2025-12-10 20:24:31,186 - api - INFO - Headers: Origin=none, Content-Type=none
+2025-12-10 20:24:31,188 - api - INFO - Response status: 200
+INFO:     127.0.0.1:45474 - "GET / HTTP/1.1" 200 OK
+2025-12-10 20:25:01,256 - api - INFO - Incoming request: GET / from 127.0.0.1
+2025-12-10 20:25:01,257 - api - INFO - Headers: Origin=none, Content-Type=none
+2025-12-10 20:25:01,258 - api - INFO - Response status: 200
+INFO:     127.0.0.1:38532 - "GET / HTTP/1.1" 200 OK
+2025-12-10 20:25:24,883 - api - INFO - Incoming request: OPTIONS /api/plan from 192.168.65.1
+2025-12-10 20:25:24,884 - api - INFO - Headers: Origin=http://localhost:8080, Content-Type=none
+2025-12-10 20:25:24,885 - api - INFO - Response status: 200
+INFO:     192.168.65.1:58478 - "OPTIONS /api/plan HTTP/1.1" 200 OK
+2025-12-10 20:25:24,888 - api - INFO - Incoming request: POST /api/plan from 192.168.65.1
+2025-12-10 20:25:24,888 - api - INFO - Headers: Origin=http://localhost:8080, Content-Type=application/json
+2025-12-10 20:25:24,895 - api - INFO - Received plan request: origin='Zurich, Switzerland (ZRH)' destinations=['Paris, France'] surprise_me=True date_ranges=[{'from': '2025-12-10', 'to': '2025-12-17'}, {'from': '2026-01-11', 'to': '2026-01-24'}] duration=(5, 10) traveler_type='couple' group_size=4 budget=(3000, 8000) accommodation='boutique' experiences=['food', 'cultural', 'relaxation']
+2025-12-10 20:25:24,895 - api - INFO - Validating configuration...
+2025-12-10 20:25:24,895 - api - INFO - Getting orchestrator...
+2025-12-10 20:25:24,895 - api - INFO - Invoking destination discovery...
+2025-12-10 20:25:24,895 - travel_agents.destination_agent - INFO - Creating destination agent with MCP servers...
+2025-12-10 20:25:24,895 - travel_agents.destination_agent - INFO - MCP_FLIGHTS_PATH: /Users/yanikalmer/Documents/Uni/Semester-5/Coding with AI new/OdyssAI/mcp-servers/mcp-flights
+2025-12-10 20:25:24,895 - travel_agents.destination_agent - INFO - MCP_GEO_PATH: /Users/yanikalmer/Documents/Uni/Semester-5/Coding with AI new/OdyssAI/mcp-servers/mcp-geo-destinations
+2025-12-10 20:25:24,895 - travel_agents.destination_agent - INFO - HOST_PROJECT_ROOT: /Users/yanikalmer/Documents/Uni/Semester-5/Coding with AI new/OdyssAI
+2025-12-10 20:25:24,895 - travel_agents.destination_agent - INFO - Checking if container odyssai-mcp-flights is running...
+Runtime Permission: Network Access Permission
+Allow access to network domain: test.api.amadeus.com (port: 443)
+2025-12-10 20:25:24,899 - api - ERROR - Error planning trip: EOF when reading a line
+Traceback (most recent call last):
+  File "/app/backend/api.py", line 108, in plan_trip
+    destinations = await orchestrator.discover_destinations_structured(request)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/backend/travel_agents/orchestrator.py", line 404, in discover_destinations_structured
+    return await destination_agent.discover_destinations_structured(trip_request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/backend/travel_agents/destination_agent.py", line 234, in discover_destinations_structured
+    agent = await self._create_agent()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/backend/travel_agents/destination_agent.py", line 109, in _create_agent
+    SandboxedMCPStdio(
+  File "/app/backend/../python-mcp-sandbox-openai-sdk-main/src/mcp_sandbox_openai_sdk/sandbox.py", line 51, in __init__
+    consented_perms = [p for p in runtime_permissions if p.get_user_consent()]
+                                                         ^^^^^^^^^^^^^^^^^^^^
+  File "/app/backend/../python-mcp-sandbox-openai-sdk-main/src/mcp_sandbox_openai_sdk/runtime_permissions.py", line 123, in get_user_consent
+    return self.ask_user(
+           ^^^^^^^^^^^^^^
+  File "/app/backend/../python-mcp-sandbox-openai-sdk-main/src/mcp_sandbox_openai_sdk/runtime_permissions.py", line 43, in ask_user
+    input("Do you want to give the agent the requested access? (yes/no): ")
+EOFError: EOF when reading a line
+2025-12-10 20:25:24,903 - api - INFO - Response status: 500
+Do you want to give the agent the requested access? (yes/no): INFO:     192.168.65.1:58478 - "POST /api/plan HTTP/1.1" 500 Internal Server Error
+2025-12-10 20:25:31,347 - api - INFO - Incoming request: GET / from 127.0.0.1
+2025-12-10 20:25:31,347 - api - INFO - Headers: Origin=none, Content-Type=none
+INFO:     127.0.0.1:52936 - "GET / HTTP/1.1" 200 OK
+2025-12-10 20:25:31,347 - api - INFO - Response status: 200
+2025-12-10 20:26:01,402 - api - INFO - Incoming request: GET / from 127.0.0.1
+2025-12-10 20:26:01,402 - api - INFO - Headers: Origin=none, Content-Type=none
+2025-12-10 20:26:01,403 - api - INFO - Response status: 200
+INFO:     127.0.0.1:58128 - "GET / HTTP/1.1" 200 OK

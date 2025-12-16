@@ -1,0 +1,11 @@
+{
+  "name": "mcp-hotels",
+  "description": "MCP server for hotel search and offers via Amadeus APIs",
+  "registry": "pypi",
+  "package_name": "amadeus",
+  "permissions": [
+    "mcp.ac.network.client",
+    "mcp.ac.system.env.read"
+  ]
+}
+

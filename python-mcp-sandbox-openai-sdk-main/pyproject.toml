@@ -1,0 +1,18 @@
+[project]
+name = "mcp-sandbox-openai-sdk"
+version = "0.0.0"
+description = "Sandbox implmementation that allows the openAI SDK to use the secure sandbox for MCP"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "Christoph Bühler", email = "christoph.buehler@unisg.ch" }]
+requires-python = ">=3.10"
+dependencies = ["openai-agents>=0.3.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

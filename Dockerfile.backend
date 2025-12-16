@@ -1,0 +1,54 @@
+# Dockerfile for OdyssAI Backend
+# FastAPI server with travel agents
+# Build from project root: docker build -f Dockerfile.backend -t odyssai-backend .
+
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI (download binary directly for reliability)
+RUN curl -fsSL https://download.docker.com/linux/static/stable/$(uname -m | sed 's/aarch64/aarch64/' | sed 's/x86_64/x86_64/')/docker-24.0.7.tgz | tar xz -C /tmp \
+    && mv /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker \
+    && chmod +x /usr/local/bin/docker
+
+# Copy requirements first for better layer caching
+COPY backend/requirements.txt /app/backend/requirements.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+
+# Install openai-agents (required for the agents)
+RUN pip install --no-cache-dir openai-agents
+
+# Copy the MCP sandbox SDK
+COPY python-mcp-sandbox-openai-sdk-main /app/python-mcp-sandbox-openai-sdk-main
+
+# Install the SDK in editable mode
+RUN pip install --no-cache-dir -e /app/python-mcp-sandbox-openai-sdk-main
+
+# Copy backend code
+COPY backend /app/backend
+
+# Set Python path to include the SDK and backend
+ENV PYTHONPATH="/app/python-mcp-sandbox-openai-sdk-main/src:/app/backend:${PYTHONPATH}"
+
+# Expose the API port
+EXPOSE 8000
+
+# Set working directory to backend
+WORKDIR /app/backend
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/ || exit 1
+
+# Default command: run the FastAPI server
+CMD ["python", "-m", "uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

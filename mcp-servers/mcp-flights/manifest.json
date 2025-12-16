@@ -1,0 +1,11 @@
+{
+  "name": "mcp-flights",
+  "description": "MCP server for flight search, pricing, and booking via Amadeus APIs",
+  "registry": "pypi",
+  "package_name": "amadeus",
+  "permissions": [
+    "mcp.ac.network.client",
+    "mcp.ac.system.env.read"
+  ]
+}
+

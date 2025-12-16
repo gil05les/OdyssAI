@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: odyssai-postgres
+    environment:
+      - POSTGRES_USER=odyssai
+      - POSTGRES_PASSWORD=odyssai_password
+      - POSTGRES_DB=odyssai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - odyssai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odyssai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: odyssai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - AMADEUS_CLIENT_ID=${AMADEUS_CLIENT_ID}
+      - AMADEUS_CLIENT_SECRET=${AMADEUS_CLIENT_SECRET}
+      - AMADEUS_HOSTNAME=${AMADEUS_HOSTNAME:-test}
+      - AMADEUS_ENV=${AMADEUS_ENV:-test}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - UNSPLASH_ACCESS_KEY=${UNSPLASH_ACCESS_KEY}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4o}
+      - MCP_AUTO_CONSENT=true
+      - HOST_PROJECT_ROOT=${HOST_PROJECT_ROOT}
+      - MCP_SERVERS_HOST_PATH=${MCP_SERVERS_HOST_PATH}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENWEATHERMAP_API_KEY=${OPENWEATHERMAP_API_KEY}
+      - DATABASE_URL=postgresql://odyssai:odyssai_password@postgres:5432/odyssai_db
+    volumes:
+      - ./backend:/app/backend
+      - ./mcp-servers:/mcp-servers
+      - ./python-mcp-sandbox-openai-sdk-main:/python-mcp-sandbox-openai-sdk-main
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./logs:/app/logs  # Mount logs directory for easy access
+    networks:
+      - odyssai-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: odyssai-frontend
+    ports:
+      - "8080:80"
+    networks:
+      - odyssai-network
+    restart: unless-stopped
+
+networks:
+  odyssai-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+

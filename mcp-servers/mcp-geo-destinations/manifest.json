@@ -1,0 +1,16 @@
+{
+  "name": "mcp-geo-destinations",
+  "description": "MCP server for geographical destination information via RestCountries, OpenWeatherMap, and Amadeus APIs",
+  "registry": "pypi",
+  "package_name": "amadeus",
+  "permissions": [
+    "mcp.ac.network.client",
+    "mcp.ac.system.env.read"
+  ]
+}
+
+
+
+
+
+

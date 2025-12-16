@@ -1,0 +1,59 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+.eggs
+*.egg
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov
+
+# Virtual environments
+.venv
+venv
+env
+ENV
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+.cursor
+
+# Frontend (not needed for backend image)
+frontend/node_modules
+frontend/.next
+frontend/dist
+frontend/build
+
+# Environment files (passed via docker run)
+.env
+.env.*
+
+# Documentation
+*.md
+!backend/README.md
+
+# Tests (optional - uncomment to exclude)
+# **/test_*.py
+# **/*_test.py
+
+# MCP servers (they run in separate containers)
+# mcp-servers/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+
+
+
