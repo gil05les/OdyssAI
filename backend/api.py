@@ -726,6 +726,10 @@ async def generate_itinerary(request: ItineraryInput):
         # Log activity count
         if total_activities > 0:
             logger.info(f"   Total activities: {total_activities}")
+            # Debug: Log URL and source for each activity
+            for day in days_data:
+                for activity in day.get("suggested_activities", []):
+                    logger.debug(f"   Activity: {activity.get('name')[:30]}, url={activity.get('url')}, source={activity.get('source')}")
         
         logger.info("=" * 70)
         

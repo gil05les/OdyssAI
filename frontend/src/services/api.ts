@@ -203,7 +203,7 @@ function getAirlineName(code: string): string {
 export async function searchFlights(request: FlightSearchRequest): Promise<Flight[]> {
   try {
     console.log('Searching flights with request:', request);
-    
+
     const response = await fetch(`${API_BASE_URL}/api/flights`, {
       method: 'POST',
       headers: {
@@ -219,9 +219,9 @@ export async function searchFlights(request: FlightSearchRequest): Promise<Fligh
 
     const data: FlightSearchResponse = await response.json();
     const flights = data.flights || [];
-    
+
     console.log(`Found ${flights.length} flights`);
-    
+
     // Map backend response to frontend Flight interface
     return flights.map((flight: FlightOptionResponse, index: number) => {
       // Backend returns airline as code (e.g., "LX"), we need both name and code
@@ -259,7 +259,7 @@ export async function searchFlights(request: FlightSearchRequest): Promise<Fligh
 export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]> {
   try {
     console.log('Searching hotels with request:', request);
-    
+
     const response = await fetch(`${API_BASE_URL}/api/hotels`, {
       method: 'POST',
       headers: {
@@ -275,9 +275,9 @@ export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]
 
     const data: HotelSearchResponse = await response.json();
     const hotels = data.hotels || [];
-    
+
     console.log(`Found ${hotels.length} hotels`);
-    
+
     // Map backend response to frontend Hotel interface
     return hotels.map((hotel: HotelOptionResponse, index: number) => ({
       id: hotel.id || `hotel-${index + 1}`,
@@ -285,8 +285,8 @@ export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]
       stars: hotel.rating ? Math.round(hotel.rating) : 4, // Convert rating to stars, default to 4
       image: hotel.image_url || getHotelStockImage(index), // Use provided image or different stock image for each hotel
       pricePerNight: hotel.price_per_night,
-      amenities: hotel.amenities && hotel.amenities.length > 0 
-        ? hotel.amenities 
+      amenities: hotel.amenities && hotel.amenities.length > 0
+        ? hotel.amenities
         : ['WiFi', 'Air Conditioning', 'Room Service'], // Default amenities
       location: hotel.address || request.city_code, // Use address or fallback to city code
       rating: hotel.rating || 0, // Use rating if available, else 0
@@ -323,6 +323,8 @@ export interface ItineraryActivityResponse {
   category: string;
   time_of_day: string;
   image?: string;  // Image URL from Unsplash
+  url?: string | null;  // Yelp URL for clickable links
+  source?: 'yelp' | 'llm';  // Source of the activity
 }
 
 /**
@@ -347,7 +349,7 @@ interface ItineraryResponse {
 export async function generateItinerary(request: ItineraryRequest): Promise<ItineraryDayResponse[]> {
   try {
     console.log('Generating itinerary with request:', request);
-    
+
     const response = await fetch(`${API_BASE_URL}/api/itinerary`, {
       method: 'POST',
       headers: {
@@ -363,9 +365,9 @@ export async function generateItinerary(request: ItineraryRequest): Promise<Itin
 
     const data: ItineraryResponse = await response.json();
     const days = data.days || [];
-    
+
     console.log(`Generated itinerary with ${days.length} days`);
-    
+
     return days;
   } catch (error) {
     console.error('Error generating itinerary:', error);

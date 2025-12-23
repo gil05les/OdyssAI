@@ -72,8 +72,10 @@ def search_hotels_in_city(
         logger.debug(f"Waiting {initial_delay}s for sandbox network setup...")
         time.sleep(initial_delay)
         
-        # Call Amadeus API with retry logic for NetworkError
+        # Call Amadeus API with retry logic for NetworkError and socket.timeout
         # NetworkError can occur when sandbox network rules aren't ready yet
+        # socket.timeout can occur if the API is slow to respond
+        import socket
         max_retries = 5
         retry_count = 0
         hotels_response = None
@@ -81,14 +83,19 @@ def search_hotels_in_city(
         while retry_count <= max_retries:
             try:
                 # Get hotels in the city
+                logger.info(f"Calling hotels by city API (attempt {retry_count + 1}/{max_retries + 1})...")
                 hotels_response = amadeus.reference_data.locations.hotels.by_city.get(
                     cityCode=city_code
                 )
+                logger.info(f"Hotels by city API call successful")
                 break  # Success, exit retry loop
-            except NetworkError as error:
+            except (NetworkError, socket.timeout) as error:
                 retry_count += 1
-                error_desc = error.description() if callable(getattr(error, 'description', None)) else str(error)
-                logger.warning(f"Network error (attempt {retry_count}/{max_retries + 1}): {error_desc}")
+                if isinstance(error, socket.timeout):
+                    error_desc = f"Socket timeout after 30 seconds"
+                else:
+                    error_desc = error.description() if callable(getattr(error, 'description', None)) else str(error)
+                logger.warning(f"Network/timeout error (attempt {retry_count}/{max_retries + 1}): {error_desc}")
                 
                 if retry_count <= max_retries:
                     # Exponential backoff: 2s, 4s, 8s, 16s, 32s
@@ -97,7 +104,7 @@ def search_hotels_in_city(
                     time.sleep(delay)
                 else:
                     # Max retries reached, re-raise to be caught by outer handler
-                    raise
+                    raise Exception(f"Failed to get hotels after {max_retries + 1} attempts: {error_desc}")
         
         try:
             
@@ -132,19 +139,24 @@ def search_hotels_in_city(
             
             logger.debug(f"Parameters: {params}")
             
-            # Call hotel offers API with retry logic for NetworkError
+            # Call hotel offers API with retry logic for NetworkError and socket.timeout
             retry_count_offers = 0
             offers_response = None
             
             while retry_count_offers <= max_retries:
                 try:
                     # Use hotel_offers_search (not hotel_offers)
+                    logger.info(f"Calling hotel offers API (attempt {retry_count_offers + 1}/{max_retries + 1})...")
                     offers_response = amadeus.shopping.hotel_offers_search.get(**params)
+                    logger.info(f"Hotel offers API call successful")
                     break  # Success, exit retry loop
-                except NetworkError as error:
+                except (NetworkError, socket.timeout) as error:
                     retry_count_offers += 1
-                    error_desc = error.description() if callable(getattr(error, 'description', None)) else str(error)
-                    logger.warning(f"Network error on hotel offers (attempt {retry_count_offers}/{max_retries + 1}): {error_desc}")
+                    if isinstance(error, socket.timeout):
+                        error_desc = f"Socket timeout after 30 seconds"
+                    else:
+                        error_desc = error.description() if callable(getattr(error, 'description', None)) else str(error)
+                    logger.warning(f"Network/timeout error on hotel offers (attempt {retry_count_offers}/{max_retries + 1}): {error_desc}")
                     
                     if retry_count_offers <= max_retries:
                         # Exponential backoff: 2s, 4s, 8s, 16s, 32s
@@ -153,7 +165,7 @@ def search_hotels_in_city(
                         time.sleep(delay)
                     else:
                         # Max retries reached, re-raise to be caught by outer handler
-                        raise
+                        raise Exception(f"Failed to get hotel offers after {max_retries + 1} attempts: {error_desc}")
             
             duration = time.time() - start_time
             logger.info(f"API calls completed in {duration:.3f}s (after {retry_count + retry_count_offers} retries)")

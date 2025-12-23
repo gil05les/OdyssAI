@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core';
 import { Activity } from '@/data/mockAgentData';
-import { Clock, DollarSign, Edit2, X } from 'lucide-react';
+import { Clock, DollarSign, Edit2, X, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -40,8 +40,8 @@ export const ItineraryActivityCard = ({
 
   const style = draggable?.transform
     ? {
-        transform: `translate3d(${draggable.transform.x}px, ${draggable.transform.y}px, 0)`,
-      }
+      transform: `translate3d(${draggable.transform.x}px, ${draggable.transform.y}px, 0)`,
+    }
     : undefined;
 
   return (
@@ -164,6 +164,22 @@ export const ItineraryActivityCard = ({
               >
                 {activity.category}
               </span>
+              {/* Yelp link badge */}
+              {activity.url && (
+                <a
+                  href={activity.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-400 rounded-full hover:bg-red-500/30 transition-colors',
+                    compact ? 'text-xs' : 'text-xs'
+                  )}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Yelp
+                </a>
+              )}
             </div>
           </div>
         </div>

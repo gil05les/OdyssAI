@@ -49,7 +49,12 @@ class Config:
     # OpenWeatherMap API (for temperature data)
     # Strip quotes if present (common when loading from .env files)
     _openweather_key = os.getenv('OPENWEATHERMAP_API_KEY', '').strip()
-    OPENWEATHERMAP_API_KEY: Optional[str] = _openweather_key.strip('"\'') if _openweather_key else None
+    OPENWEATHERMAP_API_KEY: Optional[str] = _openweather_key.strip('"\'' ) if _openweather_key else None
+    
+    # Yelp API (for activities/business search)
+    # Strip quotes if present
+    _yelp_key = os.getenv('YELP_API_KEY', '').strip()
+    YELP_API_KEY: Optional[str] = _yelp_key.strip('"\'' ) if _yelp_key else None
     
     # Model configuration
     DEFAULT_MODEL: str = os.getenv('DEFAULT_MODEL', 'gpt-5.2')
@@ -94,11 +99,18 @@ class Config:
         'mcp-geo-destinations'
     ))
     
+    MCP_ACTIVITIES_PATH: str = os.path.abspath(os.path.join(
+        _project_root,
+        'mcp-servers',
+        'mcp-activities'
+    ))
+    
     # Container names for long-running MCP servers
     MCP_FLIGHTS_CONTAINER: str = "odyssai-mcp-flights"
     MCP_HOTELS_CONTAINER: str = "odyssai-mcp-hotels"
     MCP_CARS_CONTAINER: str = "odyssai-mcp-cars"
     MCP_GEO_CONTAINER: str = "odyssai-mcp-geo"
+    MCP_ACTIVITIES_CONTAINER: str = "odyssai-mcp-activities"
     
     @classmethod
     def validate(cls) -> bool:
@@ -152,6 +164,9 @@ class Config:
             DomainPort(domain=amadeus_domain, port=443),
             EnvironmentVariable(name="AMADEUS_CLIENT_ID"),
             EnvironmentVariable(name="AMADEUS_CLIENT_SECRET"),
+            # Yelp API access (for activities)
+            DomainPort(domain='api.yelp.com', port=443),
+            EnvironmentVariable(name="YELP_API_KEY"),
         ]
         
         # Pass AMADEUS_ENV to the sandbox so it knows which API to use

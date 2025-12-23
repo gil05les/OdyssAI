@@ -51,6 +51,8 @@ export interface Activity {
   price: number;
   image: string;
   category: string;
+  url?: string | null;  // Yelp URL for clickable links
+  source?: 'yelp' | 'llm';  // Source of the activity
 }
 
 export interface ItineraryDay {

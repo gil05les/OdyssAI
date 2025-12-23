@@ -39,6 +39,7 @@ services:
       - MCP_SERVERS_HOST_PATH=${MCP_SERVERS_HOST_PATH}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENWEATHERMAP_API_KEY=${OPENWEATHERMAP_API_KEY}
+      - YELP_API_KEY=${YELP_API_KEY}
       - DATABASE_URL=postgresql://odyssai:odyssai_password@postgres:5432/odyssai_db
     volumes:
       - ./backend:/app/backend

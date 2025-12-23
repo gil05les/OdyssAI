@@ -8,6 +8,7 @@ MCP_FLIGHTS_DIR := $(MCP_SERVERS_DIR)/mcp-flights
 MCP_HOTELS_DIR := $(MCP_SERVERS_DIR)/mcp-hotels
 MCP_CARS_DIR := $(MCP_SERVERS_DIR)/mcp-cars
 MCP_GEO_DIR := $(MCP_SERVERS_DIR)/mcp-geo-destinations
+MCP_ACTIVITIES_DIR := $(MCP_SERVERS_DIR)/mcp-activities
 SANDBOX_SDK_DIR := $(PROJECT_ROOT)/python-mcp-sandbox-openai-sdk-main
 BACKEND_DIR := $(PROJECT_ROOT)/backend
 
@@ -22,6 +23,7 @@ CONTAINER_FLIGHTS := odyssai-mcp-flights
 CONTAINER_HOTELS := odyssai-mcp-hotels
 CONTAINER_CARS := odyssai-mcp-cars
 CONTAINER_GEO := odyssai-mcp-geo
+CONTAINER_ACTIVITIES := odyssai-mcp-activities
 CONTAINER_BACKEND := odyssai-backend
 CONTAINER_POSTGRES := odyssai-postgres
 
@@ -73,12 +75,12 @@ PIP := $(shell \
 
 # Phony targets
 .PHONY: help install-all install-mcp-servers install-mcp-flights install-mcp-hotels \
-	install-mcp-cars install-mcp-geo install-sandbox-sdk install-backend \
-	test-mcp-flights test-mcp-hotels test-mcp-cars test-mcp-geo test-all-servers \
+	install-mcp-cars install-mcp-geo install-mcp-activities install-sandbox-sdk install-backend \
+	test-mcp-flights test-mcp-hotels test-mcp-cars test-mcp-geo test-mcp-activities test-all-servers \
 	docker-pull-sandbox docker-clean-containers docker-clean-all docker-ps \
 	docker-start-all docker-stop-all docker-restart-all docker-status \
-	docker-start-flights docker-start-hotels docker-start-cars docker-start-geo \
-	docker-stop-flights docker-stop-hotels docker-stop-cars docker-stop-geo \
+	docker-start-flights docker-start-hotels docker-start-cars docker-start-geo docker-start-activities \
+	docker-stop-flights docker-stop-hotels docker-stop-cars docker-stop-geo docker-stop-activities \
 	docker-build-backend docker-start-backend docker-stop-backend docker-restart-backend \
 	docker-logs-backend docker-shell-backend docker-rm-backend \
 	docker-up docker-down \
@@ -96,7 +98,7 @@ help: ## Show this help message
 # Installation targets
 install-all: install-mcp-servers install-sandbox-sdk install-backend ## Install all dependencies
 
-install-mcp-servers: install-mcp-flights install-mcp-hotels install-mcp-cars install-mcp-geo ## Install dependencies for all MCP servers
+install-mcp-servers: install-mcp-flights install-mcp-hotels install-mcp-cars install-mcp-geo install-mcp-activities ## Install dependencies for all MCP servers
 
 install-mcp-flights: ## Install dependencies for mcp-flights server
 	@echo "Installing dependencies for mcp-flights..."
@@ -117,6 +119,11 @@ install-mcp-geo: ## Install dependencies for mcp-geo-destinations server
 	@echo "Installing dependencies for mcp-geo-destinations..."
 	@cd "$(MCP_GEO_DIR)" && $(PIP) install -r requirements.txt || exit 1
 	@echo "✓ mcp-geo-destinations dependencies installed"
+
+install-mcp-activities: ## Install dependencies for mcp-activities server
+	@echo "Installing dependencies for mcp-activities..."
+	@cd "$(MCP_ACTIVITIES_DIR)" && $(PIP) install -r requirements.txt || exit 1
+	@echo "✓ mcp-activities dependencies installed"
 
 install-sandbox-sdk: ## Install the MCP sandbox SDK
 	@echo "Installing MCP sandbox SDK..."
@@ -139,7 +146,7 @@ install-backend: ## Install backend dependencies
 	@echo "✓ Backend dependencies installed"
 
 # Testing targets
-test-all-servers: test-mcp-flights test-mcp-hotels test-mcp-cars test-mcp-geo ## Test all MCP servers directly (without Docker)
+test-all-servers: test-mcp-flights test-mcp-hotels test-mcp-cars test-mcp-geo test-mcp-activities ## Test all MCP servers directly (without Docker)
 
 test-mcp-flights: ## Test mcp-flights server directly (without Docker)
 	@echo "Testing mcp-flights server..."
@@ -173,6 +180,14 @@ test-mcp-geo: ## Test mcp-geo-destinations server directly (without Docker)
 		cd "$(MCP_GEO_DIR)" && $(PYTHON) test_tools.py || exit 1; \
 	fi
 
+test-mcp-activities: ## Test mcp-activities server directly (without Docker)
+	@echo "Testing mcp-activities server..."
+	@cd "$(MCP_ACTIVITIES_DIR)" && $(PYTHON) server.py --help 2>/dev/null || echo "Note: Server runs via JSON-RPC over stdin/stdout. Use test_tools.py for testing."
+	@if [ -f "$(MCP_ACTIVITIES_DIR)/test_tools.py" ]; then \
+		echo "Running test_tools.py..."; \
+		cd "$(MCP_ACTIVITIES_DIR)" && $(PYTHON) test_tools.py || exit 1; \
+	fi
+
 # Docker management targets
 docker-pull-sandbox: ## Pull the GuardiAgent MCP sandbox Docker image
 	@echo "Pulling MCP sandbox Docker image: $(SANDBOX_IMAGE)"
@@ -204,9 +219,9 @@ docker-ps: ## List running MCP-related containers
 	@docker ps --filter "ancestor=$(SANDBOX_IMAGE)" --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}" || echo "No running containers"
 
 # Long-running container management targets
-docker-start-all: docker-start-flights docker-start-hotels docker-start-cars docker-start-geo ## Start all MCP server containers
+docker-start-all: docker-start-flights docker-start-hotels docker-start-cars docker-start-geo docker-start-activities ## Start all MCP server containers
 
-docker-stop-all: docker-stop-flights docker-stop-hotels docker-stop-cars docker-stop-geo ## Stop all MCP server containers
+docker-stop-all: docker-stop-flights docker-stop-hotels docker-stop-cars docker-stop-geo docker-stop-activities ## Stop all MCP server containers
 
 docker-restart-all: docker-stop-all docker-start-all ## Restart all MCP server containers
 
@@ -277,7 +292,7 @@ docker-status: ## Show status of all containers (MCP servers + backend + postgre
 	done
 	@echo ""
 	@echo "MCP Servers:"
-	@for container in $(CONTAINER_FLIGHTS) $(CONTAINER_HOTELS) $(CONTAINER_CARS) $(CONTAINER_GEO); do \
+	@for container in $(CONTAINER_FLIGHTS) $(CONTAINER_HOTELS) $(CONTAINER_CARS) $(CONTAINER_GEO) $(CONTAINER_ACTIVITIES); do \
 		if docker ps -a --format "{{.Names}}" | grep -q "^$$container$$"; then \
 			status=$$(docker ps -a --filter "name=^$$container$$" --format "{{.Status}}"); \
 			echo "  $$container: $$status"; \
@@ -405,6 +420,43 @@ docker-stop-cars: ## Stop mcp-cars container
 
 docker-stop-geo: ## Stop mcp-geo-destinations container
 	$(call stop-container,$(CONTAINER_GEO))
+
+docker-start-activities: ## Start mcp-activities container
+	@if docker ps -a --format "{{.Names}}" | grep -q "^$(CONTAINER_ACTIVITIES)$$"; then \
+		if docker ps --format "{{.Names}}" | grep -q "^$(CONTAINER_ACTIVITIES)$$"; then \
+			echo "Container $(CONTAINER_ACTIVITIES) is already running"; \
+		else \
+			echo "Starting existing container $(CONTAINER_ACTIVITIES)..."; \
+			docker start $(CONTAINER_ACTIVITIES) || exit 1; \
+			echo "✓ Container $(CONTAINER_ACTIVITIES) started"; \
+		fi; \
+	else \
+		echo "Creating and starting container $(CONTAINER_ACTIVITIES)..."; \
+		if [ -f "$(PROJECT_ROOT)/.env" ]; then \
+			set -a; \
+			. "$(PROJECT_ROOT)/.env"; \
+			set +a; \
+		fi; \
+		if [ -f "$(MCP_ACTIVITIES_DIR)/start.sh" ]; then \
+			EXE_CMD="/sandbox/start.sh"; \
+		else \
+			EXE_CMD="python3 server.py"; \
+		fi; \
+		docker run -d -i \
+			--name $(CONTAINER_ACTIVITIES) \
+			--cap-add=NET_ADMIN \
+			-e PACKAGE=requests \
+			-e PRE_INSTALLED=false \
+			-e "EXE=$$EXE_CMD" \
+			-e "ALLOWED_EGRESS=api.yelp.com:443,pypi.org:443,files.pythonhosted.org:443" \
+			-e "YELP_API_KEY=$$YELP_API_KEY" \
+			--mount type=bind,src="$(MCP_ACTIVITIES_DIR)",dst=/sandbox \
+			$(SANDBOX_IMAGE) || exit 1; \
+		echo "✓ Container $(CONTAINER_ACTIVITIES) created and started"; \
+	fi
+
+docker-stop-activities: ## Stop mcp-activities container
+	$(call stop-container,$(CONTAINER_ACTIVITIES))
 
 # Backend Docker targets
 docker-build-backend: ## Build the backend Docker image

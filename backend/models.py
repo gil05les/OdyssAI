@@ -16,6 +16,7 @@ class AgentType(str, Enum):
     FLIGHT = "flight"
     HOTEL = "hotel"
     TRANSPORT = "transport"
+    ACTIVITIES = "activities"
     ITINERARY = "itinerary"
 
 
@@ -181,6 +182,39 @@ class TransportOutput(BaseModel):
     search_summary: str = ""
 
 
+class ActivitiesInput(BaseModel):
+    """Input schema for activities agent."""
+    location: str  # City/destination name
+    category: str = "attractions"  # restaurants, bars, museums, attractions, etc.
+    limit: int = 10
+    experiences: List[str] = Field(default_factory=list)  # User's interests
+
+
+class ActivityOption(BaseModel):
+    """Individual activity option - can be from Yelp or LLM suggestions."""
+    id: str
+    name: str
+    description: str = ""
+    category: str  # Category of activity
+    rating: Optional[float] = None
+    review_count: Optional[int] = None
+    price: Optional[str] = None  # Price level (e.g., "$$") or estimated cost
+    address: Optional[str] = None
+    image_url: Optional[str] = None
+    url: Optional[str] = None  # Yelp URL or other link (clickable)
+    source: str = "llm"  # "yelp" or "llm" - indicates data source
+    # Additional Yelp-specific fields
+    phone: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class ActivitiesOutput(BaseModel):
+    """Output schema for activities agent."""
+    activities: List[ActivityOption] = Field(default_factory=list)
+    search_summary: str = ""
+
+
 class ItineraryInput(BaseModel):
     """Input schema for itinerary agent."""
     destination: str  # City name
@@ -202,6 +236,8 @@ class ItineraryActivity(BaseModel):
     category: str  # Culture, Food, Adventure, etc.
     time_of_day: str  # morning, afternoon, evening
     image: Optional[str] = None  # Image URL from Unsplash
+    url: Optional[str] = None  # Clickable URL (e.g., Yelp page)
+    source: str = "llm"  # "yelp" for Yelp results, "llm" for LLM suggestions
 
 
 class ItineraryDay(BaseModel):

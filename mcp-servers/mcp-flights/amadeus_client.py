@@ -4,10 +4,15 @@ Amadeus API client wrapper with authentication, retry logic, and logging.
 import os
 import sys
 import time
+import socket
 from pathlib import Path
 from typing import Any, Dict, Optional
 from amadeus import Client, ResponseError
 from amadeus.client.errors import ServerError, ClientError, NetworkError
+
+# Set a default socket timeout to prevent API calls from hanging indefinitely
+# This is critical for the sandbox environment where network issues can cause hangs
+socket.setdefaulttimeout(30)  # 30 seconds timeout
 
 # Load .env file if it exists (from project root)
 try:

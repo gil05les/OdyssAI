@@ -145,6 +145,12 @@ class AgentRegistry:
             cls.register("transport", TransportAgent)
         except ImportError as e:
             logger.warning(f"Could not import TransportAgent: {e}")
+        
+        try:
+            from .activities_agent import ActivitiesAgent
+            cls.register("activities", ActivitiesAgent)
+        except ImportError as e:
+            logger.warning(f"Could not import ActivitiesAgent: {e}")
 
 
 def get_agent(name: str, model: Optional[str] = None) -> Optional[BaseAgent]:

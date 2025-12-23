@@ -42,9 +42,12 @@ const mapActivityToFrontend = (backendActivity: ItineraryActivityResponse): Acti
     'Shopping': 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400',
     'Entertainment': 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=400',
   };
-  
+
   const image = backendActivity.image || categoryImages[backendActivity.category] || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400';
-  
+
+  // Debug: Log url and source from backend 
+  console.log(`[YELP DEBUG] Activity: ${backendActivity.name}, url: ${backendActivity.url}, source: ${backendActivity.source}`);
+
   return {
     id: backendActivity.id,
     name: backendActivity.name,
@@ -53,6 +56,8 @@ const mapActivityToFrontend = (backendActivity: ItineraryActivityResponse): Acti
     price: backendActivity.estimated_price,
     image: image,
     category: backendActivity.category,
+    url: backendActivity.url,
+    source: backendActivity.source,
   };
 };
 
@@ -60,7 +65,7 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
   const [isSearching, setIsSearching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [itineraryDays, setItineraryDays] = useState<ItineraryDayResponse[]>([]);
-  
+
   // Drag-and-drop state
   const [activityPool, setActivityPool] = useState<Map<string, Activity>>(new Map());
   const [dayAssignments, setDayAssignments] = useState<Map<number, string[]>>(new Map());
@@ -113,7 +118,7 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
         });
 
         setItineraryDays(days);
-        
+
         // Extract all activities to pool
         const pool = new Map<string, Activity>();
         days.forEach((day) => {
@@ -122,7 +127,7 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
             pool.set(activity.id, activity);
           });
         });
-        
+
         setActivityPool(pool);
         // Initialize day assignments with AI suggestions (pre-populate the plan)
         const assignments = new Map<number, string[]>();
@@ -148,7 +153,7 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
     dayAssignments.forEach((ids) => {
       ids.forEach((id) => assignedIds.add(id));
     });
-    
+
     return Array.from(activityPool.values()).filter(
       (activity) => !assignedIds.has(activity.id)
     );
@@ -192,7 +197,7 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
         const overId = over.id as string;
         const sourceIndex = sourceActivities.indexOf(activityId);
         const overIndex = sourceActivities.indexOf(overId);
-        
+
         if (sourceIndex !== -1 && overIndex !== -1 && sourceIndex !== overIndex) {
           setDayAssignments((prev) => {
             const next = new Map(prev);
@@ -207,7 +212,7 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
           const next = new Map(prev);
           const sourceActivities = next.get(source) || [];
           const destActivities = next.get(destination) || [];
-          
+
           next.set(source, sourceActivities.filter((id) => id !== activityId));
           if (!destActivities.includes(activityId)) {
             next.set(destination, [...destActivities, activityId]);

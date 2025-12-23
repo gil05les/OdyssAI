@@ -14,6 +14,7 @@ from .destination_agent import DestinationAgent
 from .flight_agent import FlightAgent
 from .hotel_agent import HotelAgent
 from .transport_agent import TransportAgent
+from .activities_agent import ActivitiesAgent
 
 # Orchestrators
 from .llm_orchestrator import LLMOrchestrator, Orchestrator
@@ -31,6 +32,7 @@ __all__ = [
     'FlightAgent',
     'HotelAgent',
     'TransportAgent',
+    'ActivitiesAgent',
     
     # Orchestrators
     'LLMOrchestrator',
