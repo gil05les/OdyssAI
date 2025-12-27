@@ -16,7 +16,7 @@ import bcrypt
 
 # Import and setup comprehensive logging
 from utils.logging_config import setup_logging, get_api_logger, log_api_request, log_api_response
-setup_logging(level=logging.DEBUG, enable_file_logging=True, enable_console_logging=True)
+setup_logging(level=logging.INFO, enable_file_logging=True, enable_console_logging=True)
 logger = get_api_logger()
 
 # Add paths for imports

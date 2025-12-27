@@ -105,14 +105,6 @@ export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack,
           throw new Error(`Invalid date range: check-out (${checkOut}) must be after check-in (${checkIn})`);
         }
 
-        console.log('Hotel search params:', {
-          city_code: cityCode,
-          check_in: checkIn,
-          check_out: checkOut,
-          guests: tripRequest.group_size,
-          max_price_per_night: maxPricePerNight,
-        });
-
         const results = await searchHotels({
           city_code: cityCode,
           check_in: checkIn,
@@ -129,7 +121,6 @@ export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack,
         
         // Automatically retry once if this is the first attempt
         if (!hasRetriedRef.current) {
-          console.log('Retrying hotel search automatically...');
           hasRetriedRef.current = true;
           // Wait a bit before retrying to handle transient errors
           setTimeout(() => {

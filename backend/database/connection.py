@@ -1,9 +1,12 @@
 """Database connection and session management."""
 import os
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from typing import Generator
+
+logger = logging.getLogger(__name__)
 
 # Get database URL from environment or use default
 DATABASE_URL = os.getenv(
@@ -40,8 +43,8 @@ def init_db():
     try:
         from database.models import User, UserProfile, Trip
         Base.metadata.create_all(bind=engine)
-        print("Database tables initialized successfully")
+        logger.info("Database tables initialized successfully")
     except Exception as e:
-        print(f"Error initializing database: {e}")
+        logger.error(f"Error initializing database: {e}")
         raise
 

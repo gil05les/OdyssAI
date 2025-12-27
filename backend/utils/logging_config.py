@@ -286,7 +286,7 @@ def log_api_response(logger: logging.Logger, method: str, path: str, status_code
 
 # Initialize logging on import
 setup_logging(
-    level=logging.DEBUG,
+    level=logging.INFO,
     enable_file_logging=True,
     enable_console_logging=True
 )

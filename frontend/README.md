@@ -1,73 +1,130 @@
-# Welcome to your Lovable project
+# OdyssAI Frontend
 
-## Project info
+Modern React frontend for the OdyssAI travel planning system.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Tech Stack
 
-## How can I edit this code?
+- **React 18** with TypeScript
+- **Vite** for fast development and building
+- **Tailwind CSS** for styling
+- **shadcn/ui** + **Radix UI** for accessible components
+- **React Router** for navigation
+- **React Query** for data fetching
 
-There are several ways of editing your application.
+## Features
 
-**Use Lovable**
+- **Trip Planning Wizard**: Multi-step workflow for planning trips
+  - Destination discovery with AI recommendations
+  - Flight search and selection
+  - Hotel search and booking
+  - Day-by-day itinerary generation
+  - Transport options between locations
+  
+- **Conversational Chat**: Natural language interface for describing travel preferences
+  
+- **User Accounts**: Registration, login, profile management
+  
+- **Trip Management**: Save, resume, and manage planned trips
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Design System
 
-Changes made via Lovable will be committed automatically to this repo.
+The UI follows a "cinematic exploration" aesthetic with:
 
-**Use your preferred IDE**
+- **Glass-morphism cards** with subtle blur and borders
+- **Dark theme** with midnight blue backgrounds
+- **Gold and teal accents** for highlights
+- **Playfair Display** for headlines, **Inter** for body text
+- **Smooth animations** and transitions
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Development
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Prerequisites
 
-Follow these steps:
+- Node.js 18+
+- npm or bun
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Setup
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+```bash
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The development server runs at http://localhost:5173
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Environment Variables
 
-**Use GitHub Codespaces**
+Create a `.env.local` file (optional):
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+# Backend API URL (defaults to http://localhost:8000)
+VITE_API_BASE_URL=http://localhost:8000
+```
 
-## What technologies are used for this project?
+### Building
 
-This project is built with:
+```bash
+# Build for production
+npm run build
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+# Preview production build
+npm run preview
+```
 
-## How can I deploy this project?
+### Linting
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+```bash
+npm run lint
+```
 
-## Can I connect a custom domain to my Lovable project?
+## Project Structure
 
-Yes, you can!
+```
+src/
+├── components/
+│   ├── travel/           # Trip planning components
+│   │   ├── agents/       # Agent-specific UI (Destination, Flight, Hotel, etc.)
+│   │   ├── ChatSidebar.tsx
+│   │   ├── TravelPlannerForm.tsx
+│   │   └── ...
+│   ├── ui/               # shadcn/ui components
+│   └── Header.tsx
+├── contexts/
+│   ├── AuthContext.tsx   # Authentication state
+│   └── TravelFormContext.tsx  # Trip planning form state
+├── pages/
+│   ├── Index.tsx         # Main planning page
+│   ├── Login.tsx
+│   ├── Register.tsx
+│   ├── Profile.tsx
+│   ├── MyTrips.tsx
+│   └── ResumePlanning.tsx
+├── services/
+│   ├── api.ts            # Backend API calls
+│   └── authService.ts    # Authentication API
+└── lib/
+    └── utils.ts          # Utility functions
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Docker
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+The frontend is containerized with nginx for production:
+
+```bash
+# Build the image
+docker build -t odyssai-frontend .
+
+# Run the container
+docker run -p 8080:80 odyssai-frontend
+```
+
+Or use docker-compose from the project root:
+
+```bash
+docker-compose up frontend
+```
+
+The production build is served at http://localhost:8080

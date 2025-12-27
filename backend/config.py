@@ -58,7 +58,7 @@ class Config:
     YELP_API_KEY: Optional[str] = _yelp_key.strip('"\'' ) if _yelp_key else None
     
     # Model configuration
-    DEFAULT_MODEL: str = os.getenv('DEFAULT_MODEL', 'gpt-5.2')
+    DEFAULT_MODEL: str = os.getenv('DEFAULT_MODEL', 'gpt-5.1')
     
     # MCP Server paths
     # When running in Docker, use HOST_PROJECT_ROOT env var for paths that Docker needs

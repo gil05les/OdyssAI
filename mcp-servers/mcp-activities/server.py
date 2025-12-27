@@ -17,7 +17,7 @@ from tools.search_activities import search_activities, get_yelp_categories
 
 
 # Initialize logger
-logger = setup_logger("mcp_activities_server", level=logging.DEBUG)
+logger = setup_logger("mcp_activities_server", level=logging.INFO)
 
 
 class MCPServer:

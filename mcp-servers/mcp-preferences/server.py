@@ -24,7 +24,7 @@ from tools.full_profile import get_full_preference_profile
 
 
 # Initialize logger
-logger = setup_logger("mcp_preferences_server", level=logging.DEBUG)
+logger = setup_logger("mcp_preferences_server", level=logging.INFO)
 
 
 class MCPServer:

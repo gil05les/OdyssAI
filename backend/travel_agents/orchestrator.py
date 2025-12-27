@@ -10,8 +10,11 @@ run MCP servers in Docker containers with restricted permissions.
 
 import os
 import sys
+import logging
 from typing import Optional, Dict, Any, List
 import re
+
+logger = logging.getLogger(__name__)
 
 # Add paths for imports
 backend_dir = os.path.dirname(os.path.dirname(__file__))
@@ -251,16 +254,11 @@ class Orchestrator:
         needs_hotel = self._needs_hotel_search(user_query)
         needs_transport = self._needs_transport_search(user_query)
         
-        print(f"Orchestrator Analysis:")
-        print(f"  - Needs destination search: {needs_destination}")
-        print(f"  - Needs flight search: {needs_flight}")
-        print(f"  - Needs hotel search: {needs_hotel}")
-        print(f"  - Needs transport search: {needs_transport}")
-        print()
+        logger.info(f"Orchestrator Analysis: destination={needs_destination}, flight={needs_flight}, hotel={needs_hotel}, transport={needs_transport}")
         
         # Step 1: Destination discovery (if needed)
         if needs_destination:
-            print("Invoking Destination Agent...")
+            logger.info("Invoking Destination Agent...")
             destination_agent = await self._get_destination_agent()
             try:
                 destination_result = await destination_agent.discover_destinations(user_query)
@@ -268,10 +266,9 @@ class Orchestrator:
                     'agent': 'Destination Search',
                     'result': destination_result
                 })
-                print("Destination Agent completed.")
-                print()
+                logger.info("Destination Agent completed.")
             except Exception as e:
-                print(f"Error in destination agent: {e}")
+                logger.error(f"Error in destination agent: {e}")
                 results.append({
                     'agent': 'Destination Search',
                     'result': f"Error: {str(e)}"
@@ -279,7 +276,7 @@ class Orchestrator:
         
         # Step 2: Flight search (if needed)
         if needs_flight:
-            print("Invoking Flight Agent...")
+            logger.info("Invoking Flight Agent...")
             flight_agent = await self._get_flight_agent()
             try:
                 # Extract flight information
@@ -302,10 +299,9 @@ class Orchestrator:
                     'agent': 'Flight',
                     'result': flight_result
                 })
-                print("Flight Agent completed.")
-                print()
+                logger.info("Flight Agent completed.")
             except Exception as e:
-                print(f"Error in flight agent: {e}")
+                logger.error(f"Error in flight agent: {e}")
                 results.append({
                     'agent': 'Flight',
                     'result': f"Error: {str(e)}"
@@ -313,7 +309,7 @@ class Orchestrator:
         
         # Step 3: Hotel search (if needed)
         if needs_hotel:
-            print("Invoking Hotel Agent...")
+            logger.info("Invoking Hotel Agent...")
             hotel_agent = await self._get_hotel_agent()
             try:
                 hotel_result = await hotel_agent.handle_hotel_query(user_query)
@@ -321,10 +317,9 @@ class Orchestrator:
                     'agent': 'Hotel',
                     'result': hotel_result
                 })
-                print("Hotel Agent completed.")
-                print()
+                logger.info("Hotel Agent completed.")
             except Exception as e:
-                print(f"Error in hotel agent: {e}")
+                logger.error(f"Error in hotel agent: {e}")
                 results.append({
                     'agent': 'Hotel',
                     'result': f"Error: {str(e)}"
@@ -332,7 +327,7 @@ class Orchestrator:
         
         # Step 4: Transport search (if needed)
         if needs_transport:
-            print("Invoking Transport Agent...")
+            logger.info("Invoking Transport Agent...")
             transport_agent = await self._get_transport_agent()
             try:
                 transport_result = await transport_agent.handle_transport_query(user_query)
@@ -340,10 +335,9 @@ class Orchestrator:
                     'agent': 'Transport',
                     'result': transport_result
                 })
-                print("Transport Agent completed.")
-                print()
+                logger.info("Transport Agent completed.")
             except Exception as e:
-                print(f"Error in transport agent: {e}")
+                logger.error(f"Error in transport agent: {e}")
                 results.append({
                     'agent': 'Transport',
                     'result': f"Error: {str(e)}"

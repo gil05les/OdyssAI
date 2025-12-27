@@ -46,9 +46,6 @@ const mapActivityToFrontend = (backendActivity: ItineraryActivityResponse): Acti
 
   const image = backendActivity.image || categoryImages[backendActivity.category] || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=400';
 
-  // Debug: Log url and source from backend 
-  console.log(`[YELP DEBUG] Activity: ${backendActivity.name}, url: ${backendActivity.url}, source: ${backendActivity.source}`);
-
   return {
     id: backendActivity.id,
     name: backendActivity.name,

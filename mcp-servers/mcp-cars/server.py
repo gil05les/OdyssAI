@@ -18,7 +18,7 @@ from tools.offer_details import get_car_offer_details
 
 
 # Initialize logger
-logger = setup_logger("mcp_cars_server", level=logging.DEBUG)
+logger = setup_logger("mcp_cars_server", level=logging.INFO)
 
 
 class MCPServer:

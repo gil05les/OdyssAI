@@ -58,15 +58,6 @@ export const FlightAgent = ({ destination, tripRequest, onSelect, onBack, onSele
         // Use budget upper bound as max price filter
         const maxPrice = tripRequest.budget[1];
 
-        console.log('Flight search params:', {
-          origin: originIata,
-          destination: destIata,
-          departure_date: departureDate,
-          return_date: returnDate,
-          adults: tripRequest.group_size,
-          max_price: maxPrice,
-        });
-
         const results = await searchFlights({
           origin: originIata,
           destination: destIata,

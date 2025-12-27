@@ -19,7 +19,7 @@ from tools.weather_forecast import get_weather_forecast
 
 
 # Initialize logger
-logger = setup_logger("mcp_geo_destinations_server", level=logging.DEBUG)
+logger = setup_logger("mcp_geo_destinations_server", level=logging.INFO)
 
 
 class MCPServer:

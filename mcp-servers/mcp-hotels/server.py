@@ -19,7 +19,7 @@ from tools.offer_details import get_hotel_offer_details
 
 
 # Initialize logger
-logger = setup_logger("mcp_hotels_server", level=logging.DEBUG)
+logger = setup_logger("mcp_hotels_server", level=logging.INFO)
 
 
 class MCPServer:

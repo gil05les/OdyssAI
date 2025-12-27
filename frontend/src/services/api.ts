@@ -236,8 +236,6 @@ function getAirlineName(code: string): string {
  */
 export async function searchFlights(request: FlightSearchRequest): Promise<Flight[]> {
   try {
-    console.log('Searching flights with request:', request);
-
     const response = await fetch(`${API_BASE_URL}/api/flights`, {
       method: 'POST',
       headers: getApiHeaders(),
@@ -251,8 +249,6 @@ export async function searchFlights(request: FlightSearchRequest): Promise<Fligh
 
     const data: FlightSearchResponse = await response.json();
     const flights = data.flights || [];
-
-    console.log(`Found ${flights.length} flights`);
 
     // Map backend response to frontend Flight interface
     return flights.map((flight: FlightOptionResponse, index: number) => {
@@ -293,8 +289,6 @@ export async function searchFlights(request: FlightSearchRequest): Promise<Fligh
  */
 export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]> {
   try {
-    console.log('Searching hotels with request:', request);
-
     const response = await fetch(`${API_BASE_URL}/api/hotels`, {
       method: 'POST',
       headers: getApiHeaders(),
@@ -308,8 +302,6 @@ export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]
 
     const data: HotelSearchResponse = await response.json();
     const hotels = data.hotels || [];
-
-    console.log(`Found ${hotels.length} hotels`);
 
     // Map backend response to frontend Hotel interface
     return hotels.map((hotel: HotelOptionResponse, index: number) => ({
@@ -477,8 +469,6 @@ export async function searchTransport(request: TransportSearchRequest): Promise<
  */
 export async function generateItinerary(request: ItineraryRequest): Promise<ItineraryDayResponse[]> {
   try {
-    console.log('Generating itinerary with request:', request);
-
     const response = await fetch(`${API_BASE_URL}/api/itinerary`, {
       method: 'POST',
       headers: getApiHeaders(),
@@ -492,8 +482,6 @@ export async function generateItinerary(request: ItineraryRequest): Promise<Itin
 
     const data: ItineraryResponse = await response.json();
     const days = data.days || [];
-
-    console.log(`Generated itinerary with ${days.length} days`);
 
     return days;
   } catch (error) {

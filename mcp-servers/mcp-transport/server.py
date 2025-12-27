@@ -24,7 +24,7 @@ from tools.uber_estimate import get_uber_estimate
 
 
 # Initialize logger
-logger = setup_logger("mcp_transport_server", level=logging.DEBUG)
+logger = setup_logger("mcp_transport_server", level=logging.INFO)
 
 
 class MCPServer:

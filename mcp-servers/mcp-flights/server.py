@@ -21,7 +21,7 @@ from tools.routes import get_airline_routes
 
 
 # Initialize logger
-logger = setup_logger("mcp_flights_server", level=logging.DEBUG)
+logger = setup_logger("mcp_flights_server", level=logging.INFO)
 
 
 class MCPServer:
