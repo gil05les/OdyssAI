@@ -92,6 +92,23 @@ class SandboxedMCPStdio(MCPServerStdio):
             elif machine in ('x86_64', 'amd64'):
                 platform_flag = ["--platform", "linux/amd64"]
 
+        # Extract network-related flags from runtime_args and place them before the image
+        # Docker requires --network to come before the image name
+        network_flags = []
+        remaining_runtime_args = []
+        if runtime_args:
+            i = 0
+            while i < len(runtime_args):
+                if runtime_args[i] == "--network" and i + 1 < len(runtime_args):
+                    network_flags.extend(["--network", runtime_args[i + 1]])
+                    i += 2
+                elif isinstance(runtime_args[i], str) and runtime_args[i].startswith("--network="):
+                    network_flags.append(runtime_args[i])
+                    i += 1
+                else:
+                    remaining_runtime_args.append(runtime_args[i])
+                    i += 1
+
         args = [
             "run",
             *(["--rm"] if remove_container_after_run else []),
@@ -125,8 +142,9 @@ class SandboxedMCPStdio(MCPServerStdio):
                 [],
             ),
             *add_args,
+            *network_flags,  # Network flags must come BEFORE the image name
             f"ghcr.io/guardiagent/mcp-sandbox-{manifest.registry.value}:{_sandbox_version}",
-            *(runtime_args if runtime_args else []),
+            *remaining_runtime_args,  # Remaining args come AFTER the image name
         ]
 
         # Debug: print the full docker command

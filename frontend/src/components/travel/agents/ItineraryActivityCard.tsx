@@ -3,6 +3,7 @@ import { Activity } from '@/data/mockAgentData';
 import { Clock, DollarSign, Edit2, X, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { PreferenceBadge } from '@/components/ui/PreferenceBadge';
 
 interface ItineraryActivityCardProps {
   activity: Activity;
@@ -179,6 +180,13 @@ export const ItineraryActivityCard = ({
                   <ExternalLink className="w-3 h-3" />
                   Yelp
                 </a>
+              )}
+              {/* Preference badge */}
+              {activity.preference_score && activity.preference_score >= 50 && (
+                <PreferenceBadge 
+                  score={activity.preference_score} 
+                  reasons={activity.preference_match?.reasons}
+                />
               )}
             </div>
           </div>

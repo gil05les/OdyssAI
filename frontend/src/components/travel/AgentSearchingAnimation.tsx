@@ -50,7 +50,7 @@ export const AgentSearchingAnimation = ({ agentType, searchText }: AgentSearchin
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+    <div className="flex flex-col items-center justify-center animate-fade-in">
       {/* Animated rings container */}
       <div className="relative w-40 h-40 mb-8">
         {/* Outer pulsing rings */}

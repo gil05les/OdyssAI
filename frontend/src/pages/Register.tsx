@@ -45,7 +45,7 @@ export default function Register() {
   return (
     <div className="min-h-screen bg-midnight">
       <Header />
-      <div className="flex items-center justify-center px-4 py-12">
+      <div className="flex items-center justify-center px-4 py-12 pt-20">
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-full bg-gold/20 flex items-center justify-center mx-auto mb-4">

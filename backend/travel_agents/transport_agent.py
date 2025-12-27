@@ -1,13 +1,15 @@
 """
-Transport Agent (Car Rental)
+Transport Agent
 
-Specialized agent for car rental search, pricing, and booking operations.
-Uses mcp-cars MCP server to interact with Amadeus car rental APIs.
+Specialized agent for transport options including ride estimates and Google Maps directions.
+Uses mcp-transport MCP server to interact with Google Maps APIs.
+Note: Uber API integration is disabled (API key not obtainable) - uses LLM fallback for ride estimates.
 
 This agent uses GuardiAgent MCP Sandbox (via mcp_sandbox_openai_sdk) to securely
 run MCP servers in Docker containers with restricted permissions.
 
 Uses OpenAI's structured output feature (output_type) for reliable JSON responses.
+Includes graceful error handling with LLM fallback for generating estimates when APIs fail.
 """
 
 import os
@@ -29,7 +31,7 @@ from utils.logging_config import (
 
 # Get specialized loggers
 logger = get_agent_logger('transport')
-mcp_logger = get_mcp_logger('cars')
+mcp_logger = get_mcp_logger('transport')
 
 # Add paths for imports
 backend_dir = os.path.dirname(os.path.dirname(__file__))
@@ -54,7 +56,8 @@ from .base_agent import BaseAgent
 from models import (
     TransportInput,
     TransportOutput,
-    CarRentalOption,
+    TransportLegOutput,
+    TransportOptionOutput,
     AgentResult,
     AgentType,
     ValidationResult,
@@ -63,26 +66,34 @@ from models import (
 
 class TransportAgent(BaseAgent):
     """
-    Agent specialized in car rental operations.
+    Agent specialized in transport options.
     
-    Handles car rental search, pricing, and booking queries
-    using the mcp-cars MCP server.
+    Handles transport search for trip legs including:
+    - Airport to Hotel transfers
+    - Hotel to activity locations
+    - Inter-city transport
+    
+    Uses mcp-transport MCP server with Google Maps APIs.
+    Uber estimates use LLM fallback (Uber API key not obtainable).
+    Includes graceful error handling with LLM fallback.
     
     Uses structured output (output_type=TransportOutput) for reliable parsing.
     
     Extends BaseAgent to support the pluggable orchestrator architecture.
     """
     
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, user_id: Optional[int] = None):
         """
         Initialize the transport agent.
         
         Args:
             model: Model to use (defaults to Config.DEFAULT_MODEL)
+            user_id: Optional user ID for preference matching
         """
         super().__init__(model=model)
         self._agent: Optional[Agent] = None
         self._servers: Optional[MCPServers] = None
+        self._user_id = user_id
     
     @property
     def agent_type(self) -> AgentType:
@@ -99,7 +110,7 @@ class TransportAgent(BaseAgent):
     
     async def execute(self, params: Dict[str, Any]) -> AgentResult:
         """
-        Execute car rental search based on input parameters.
+        Execute transport search based on trip context.
         
         Uses structured output - the LLM returns a TransportOutput directly.
         
@@ -107,52 +118,63 @@ class TransportAgent(BaseAgent):
             params: Dictionary matching TransportInput schema
         
         Returns:
-            AgentResult with car rental search results
+            AgentResult with transport search results
         """
         try:
             log_agent_input(logger, "TransportAgent", "execute", params)
             log_agent_state(logger, "TransportAgent", "EXECUTING", {"params": params})
             
             # Extract parameters
-            pickup_iata = params.get("pickup_iata", "")
-            pickup_date = params.get("pickup_date", "")
-            dropoff_date = params.get("dropoff_date", "")
-            pickup_time = params.get("pickup_time")
-            dropoff_time = params.get("dropoff_time")
+            destination_city = params.get("destination_city", "")
+            destination_country = params.get("destination_country", "")
+            hotel_address = params.get("hotel_address", "")
+            airport_code = params.get("airport_code", "")
+            itinerary_locations = params.get("itinerary_locations", [])
+            arrival_datetime = params.get("arrival_datetime", "")
+            departure_datetime = params.get("departure_datetime", "")
+            group_size = params.get("group_size", 1)
             
             logger.info("=" * 60)
             logger.info("🚗 TRANSPORT AGENT EXECUTE (Structured Output)")
             logger.info("=" * 60)
-            logger.info(f"  Pickup IATA:  {pickup_iata}")
-            logger.info(f"  Pickup Date:  {pickup_date}")
-            logger.info(f"  Dropoff Date: {dropoff_date}")
-            logger.info(f"  Pickup Time:  {pickup_time or 'Not specified'}")
-            logger.info(f"  Dropoff Time: {dropoff_time or 'Not specified'}")
+            logger.info(f"  Destination: {destination_city}, {destination_country}")
+            logger.info(f"  Hotel: {hotel_address}")
+            logger.info(f"  Airport: {airport_code}")
+            logger.info(f"  Locations: {len(itinerary_locations)} key locations")
+            if itinerary_locations:
+                logger.info(f"    Location list: {', '.join(itinerary_locations[:5])}{'...' if len(itinerary_locations) > 5 else ''}")
+            else:
+                logger.warning("    ⚠️  No itinerary locations provided - will only generate airport transfers")
+            logger.info(f"  Arrival: {arrival_datetime}")
+            logger.info(f"  Departure: {departure_datetime}")
             logger.info("-" * 60)
             
             # Call the search method - returns structured TransportOutput
-            logger.info("📡 Calling search_car_rentals (structured output)...")
-            transport_output = await self.search_car_rentals(
-                pickup_iata=pickup_iata,
-                pickup_date=pickup_date,
-                dropoff_date=dropoff_date,
-                pickup_time=pickup_time,
-                dropoff_time=dropoff_time
+            logger.info("📡 Calling search_transport_options (structured output)...")
+            transport_output = await self.search_transport_options(
+                destination_city=destination_city,
+                destination_country=destination_country,
+                hotel_address=hotel_address,
+                airport_code=airport_code,
+                itinerary_locations=itinerary_locations,
+                arrival_datetime=arrival_datetime,
+                departure_datetime=departure_datetime,
+                group_size=group_size
             )
             
             logger.info("-" * 60)
-            logger.info(f"✅ Received {len(transport_output.car_rentals)} car rentals (structured)")
+            logger.info(f"✅ Received {len(transport_output.legs)} transport legs (structured)")
             
-            for i, car in enumerate(transport_output.car_rentals[:3]):  # Log first 3
-                logger.info(f"  Car {i+1}: {car.company} {car.vehicle_name} - ${car.total_price}")
+            for i, leg in enumerate(transport_output.legs[:3]):  # Log first 3
+                logger.info(f"  Leg {i+1}: {leg.from_location} -> {leg.to_location} ({len(leg.options)} options)")
             
             logger.info("=" * 60)
             
             # Convert TransportOutput to dict for AgentResult
-            car_rentals_data = [car.model_dump() for car in transport_output.car_rentals]
+            legs_data = [leg.model_dump() for leg in transport_output.legs]
             
             result_data = {
-                "car_rentals": car_rentals_data,
+                "legs": legs_data,
                 "search_summary": transport_output.search_summary
             }
             
@@ -164,7 +186,7 @@ class TransportAgent(BaseAgent):
             )
             
             log_agent_output(logger, "TransportAgent", "execute", result_data, success=True)
-            log_agent_state(logger, "TransportAgent", "COMPLETED", {"car_rentals_found": len(car_rentals_data)})
+            log_agent_state(logger, "TransportAgent", "COMPLETED", {"legs_found": len(legs_data)})
             
             return result
             
@@ -186,51 +208,79 @@ class TransportAgent(BaseAgent):
             return error_result
     
     async def _create_agent(self) -> Agent:
-        """Create the agent with mcp-cars MCP server and structured output."""
+        """Create the agent with mcp-transport and mcp-preferences MCP servers and structured output."""
         if self._agent is not None:
             logger.info("♻️  Reusing existing Transport Agent instance")
             return self._agent
         
         logger.info("🔧 Creating new Transport Agent (with structured output)...")
         
-        # Ensure long-running container is running (started via Makefile)
-        logger.info(f"🐳 Checking container: {Config.MCP_CARS_CONTAINER}")
-        ensure_container_running(Config.MCP_CARS_CONTAINER)
+        # Ensure long-running containers are running (started via Makefile)
+        logger.info(f"🐳 Checking container: {Config.MCP_TRANSPORT_CONTAINER}")
+        ensure_container_running(Config.MCP_TRANSPORT_CONTAINER)
+        logger.info(f"🐳 Checking container: {Config.MCP_PREFERENCES_CONTAINER}")
+        ensure_container_running(Config.MCP_PREFERENCES_CONTAINER)
         
         # Get runtime permissions
         runtime_permissions = Config.get_runtime_permissions()
         logger.info(f"🔐 Runtime permissions configured: {len(runtime_permissions)} rules")
         
-        # Create cars MCP manifest
-        logger.info("📦 Creating MCP cars manifest...")
-        cars_manifest = DevMCPManifest(
-            name="mcp-cars",
-            description="MCP server for car rental search, pricing, and booking via Amadeus APIs",
+        # Create transport MCP manifest
+        logger.info("📦 Creating MCP transport manifest...")
+        transport_manifest = DevMCPManifest(
+            name="mcp-transport",
+            description="MCP server for transport options including Google Maps directions (Uber uses LLM fallback)",
             registry=Registry.PYPI,
-            package_name="amadeus",
+            package_name="requests",
             permissions=[
                 Permission.MCP_AC_NETWORK_CLIENT,
                 Permission.MCP_AC_SYSTEM_ENV_READ,
             ],
-            code_mount=Config.MCP_CARS_PATH,
+            code_mount=Config.MCP_TRANSPORT_PATH,
             exec_command="bash /sandbox/start.sh",
             preinstalled=True
         )
         
-        # Create and start MCP servers (use long-running containers)
-        logger.info("🚀 Starting MCP server connection...")
-        self._servers = MCPServers(
+        # Create preferences MCP manifest
+        logger.info("📦 Creating MCP preferences manifest...")
+        preferences_manifest = DevMCPManifest(
+            name="mcp-preferences",
+            description="MCP server for user preference analysis from trip history",
+            registry=Registry.PYPI,
+            package_name="sqlalchemy",
+            permissions=[
+                Permission.MCP_AC_NETWORK_CLIENT,
+                Permission.MCP_AC_SYSTEM_ENV_READ,
+            ],
+            code_mount=Config.MCP_PREFERENCES_PATH,
+            exec_command="bash /sandbox/start.sh",
+            preinstalled=True
+        )
+        
+        # Create list of MCP servers
+        servers_list = [
             SandboxedMCPStdio(
-                manifest=cars_manifest,
+                manifest=transport_manifest,
                 runtime_permissions=runtime_permissions,
                 remove_container_after_run=False,
                 client_session_timeout_seconds=300,
+            ),
+            SandboxedMCPStdio(
+                manifest=preferences_manifest,
+                runtime_permissions=runtime_permissions,
+                remove_container_after_run=False,
+                client_session_timeout_seconds=300,
+                runtime_args=["--network", "odyssai_odyssai-network"],
             )
-        )
+        ]
         
-        logger.info("⏳ Initializing MCP server (this may take a moment)...")
+        # Create and start MCP servers (use long-running containers)
+        logger.info("🚀 Starting MCP server connections...")
+        self._servers = MCPServers(*servers_list)
+        
+        logger.info("⏳ Initializing MCP servers (this may take a moment)...")
         await self._servers.__aenter__()
-        logger.info("✅ MCP server connected!")
+        logger.info("✅ MCP servers connected!")
         
         logger.info(f"🤖 Creating LLM agent with model: {self.model}")
         logger.info("📋 Using structured output: TransportOutput")
@@ -246,89 +296,167 @@ class TransportAgent(BaseAgent):
         logger.info("✅ Transport Agent ready!")
         return self._agent
     
-    async def search_car_rentals(
+    async def search_transport_options(
         self,
-        pickup_iata: str,
-        pickup_date: str,
-        dropoff_date: str,
-        pickup_time: Optional[str] = None,
-        dropoff_time: Optional[str] = None
+        destination_city: str,
+        destination_country: str,
+        hotel_address: str,
+        airport_code: str,
+        itinerary_locations: List[str],
+        arrival_datetime: str,
+        departure_datetime: str,
+        group_size: int = 1
     ) -> TransportOutput:
         """
-        Search for car rentals at an airport.
+        Search for transport options for all trip legs.
         
         Uses structured output - returns TransportOutput directly.
+        Includes graceful error handling with LLM fallback.
         
         Args:
-            pickup_iata: IATA code of the pickup airport (e.g., "LIS")
-            pickup_date: Pickup date in YYYY-MM-DD format
-            dropoff_date: Dropoff date in YYYY-MM-DD format
-            pickup_time: Optional pickup time (HH:MM format)
-            dropoff_time: Optional dropoff time (HH:MM format)
+            destination_city: Destination city name
+            destination_country: Destination country name
+            hotel_address: Hotel address
+            airport_code: Airport IATA code
+            itinerary_locations: List of key locations from itinerary
+            arrival_datetime: Arrival date/time
+            departure_datetime: Departure date/time
+            group_size: Number of travelers
         
         Returns:
-            TransportOutput with structured car rental data
+            TransportOutput with structured transport data
         """
         import time
         start_time = time.time()
         
-        log_agent_state(logger, "TransportAgent", "SEARCHING_CAR_RENTALS", {
-            "pickup_iata": pickup_iata,
-            "pickup_date": pickup_date,
-            "dropoff_date": dropoff_date,
-            "pickup_time": pickup_time,
-            "dropoff_time": dropoff_time
+        log_agent_state(logger, "TransportAgent", "SEARCHING_TRANSPORT", {
+            "destination_city": destination_city,
+            "hotel_address": hotel_address,
+            "airport_code": airport_code,
+            "locations_count": len(itinerary_locations)
         })
         
-        logger.info("🔄 search_car_rentals() called")
+        logger.info("🔄 search_transport_options() called")
         logger.debug(f"Creating agent instance...")
         agent = await self._create_agent()
         logger.debug(f"Agent instance created")
         
-        prompt = f"""Search for car rentals at {pickup_iata} airport.
+        # Build locations list for prompt
+        locations_text = "\n".join([f"  - {loc}" for loc in itinerary_locations]) if itinerary_locations else "  (none specified)"
+        
+        # Build preferences section if user_id is provided
+        preferences_section = ""
+        if self._user_id:
+            preferences_section = f"""
+STEP 1 - Get User Preferences:
+- Call get_transport_preferences with user_id={self._user_id}
+- Note their preferred transport modes (uber, transit, walking, taxi), price sensitivity, and typical choices
+- If has_preference is false, proceed without preference matching
 
-Search Parameters:
-- Pickup Date: {pickup_date}
-- Dropoff Date: {dropoff_date}
 """
         
-        if pickup_time:
-            prompt += f"- Pickup Time: {pickup_time}\n"
+        prompt = f"""Analyze this trip and find transport options for ALL legs.
+{preferences_section}
+
+CRITICAL REQUIREMENT: You must create transport legs for:
+1. Airport transfers (arrival and departure)
+2. EACH itinerary location provided (both to and from hotel)
+
+Trip Context:
+- Destination: {destination_city}, {destination_country}
+- Hotel: {hotel_address}
+- Airport: {airport_code}
+- Key locations from itinerary ({len(itinerary_locations)} locations):
+{locations_text}
+- Arrival: {arrival_datetime}
+- Departure: {departure_datetime}
+- Group size: {group_size} traveler(s)
+
+Instructions:
+1. First, use geocode_location to get coordinates for key locations:
+   - Hotel address: {hotel_address}
+   - Airport: Use "{airport_code} Airport" or search for airport in {destination_city}, {destination_country}
+   - For EACH itinerary location, geocode with city/country context:
+     * Format: "[location name], {destination_city}, {destination_country}"
+     * Example: If location is "Eiffel Tower" and destination is "Paris, France", geocode "Eiffel Tower, Paris, France"
+     * This ensures accurate geocoding and prevents confusion with similarly named places in other cities
+
+2. Identify ALL transport legs needed (REQUIRED - do not skip any):
+   - Airport to Hotel (arrival transfer) - REQUIRED
+   - Hotel to Airport (departure transfer) - REQUIRED
+   - For EACH key location in the itinerary, create TWO legs:
+     * Hotel to [location name] - REQUIRED for each itinerary location
+     * [location name] to Hotel - REQUIRED for each itinerary location (return trip)
+   
+   IMPORTANT: If itinerary_locations contains locations, you MUST create transport legs for ALL of them.
+   Do not skip itinerary locations even if you only have airport transfers.
+
+3. For geocoding itinerary locations, ALWAYS include city and country:
+   - When calling geocode_location for an itinerary location, use format: "[location name], {destination_city}, {destination_country}"
+   - Example: For "Eiffel Tower" in Paris, geocode "Eiffel Tower, Paris, France"
+   - This ensures you get the correct location and not a similarly named place in another city
+   - If geocoding fails for a location name alone, retry with city/country context: "[location name], {destination_city}, {destination_country}"
+
+4. For EACH leg, call these tools IN PARALLEL:
+   - get_uber_estimate (if coordinates available from geocoding)
+   - get_directions_transit (for public transport)
+   - get_directions_walking (only if distance < 2km)
+   - get_directions_driving (for taxi estimates)
+
+IMPORTANT - Error Handling:
+- If a tool returns success=False, DO NOT fail the entire request
+- Instead, use your knowledge to GENERATE a reasonable estimate
+- For LLM-generated options, set source="llm" (not "api")
+- For API-sourced options, set source="api"
+- Base estimates on:
+  * Typical taxi rates: ~$2-3/km + $3-5 base fare
+  * Walking speed: ~5km/h
+  * Public transit: ~$2-5 per trip, 30-60 min typical
+  * Distance between locations (use geocoding results if available)
+  * Local pricing in {destination_country}
+
+5. Return ALL options (both API and LLM-generated) in TransportOutput format
+6. Each option MUST have source="api" or source="llm" to indicate origin
+7. Format options with:
+   - id: unique identifier
+   - type: "uber", "transit", "walking", "driving", or "taxi"
+   - name: descriptive name (e.g., "UberX", "Metro Line 1", "Walking", "Taxi")
+   - duration: human-readable (e.g., "25 min", "1h 15m")
+   - duration_seconds: numeric seconds
+   - price: numeric price (if available)
+   - price_range: string range (e.g., "$15-20") if price varies
+   - currency: currency code (e.g., "USD", "EUR", "CHF")
+   - distance: distance text (if available)
+   - steps: list of route steps (for transit/walking)
+   - icon: emoji icon (🚕 for taxi, 🚗 for uber, 🚌 for transit, 🚶 for walking)
+   - source: "api" or "llm"
+"""
         
-        if dropoff_time:
-            prompt += f"- Dropoff Time: {dropoff_time}\n"
+        # Add preference matching fields if user_id is provided
+        if self._user_id:
+            prompt += """   - preference_match: Object with preference matching info (if user preferences were found):
+     * mode_match: true if transport type matches user's preferred modes
+     * price_match: true if price is within user's typical range based on price_sensitivity
+     * reasons: List of human-readable strings explaining WHY this matches (e.g., "You typically prefer transit", "Price within your budget")
+   - preference_score: 0-100 score based on preference matches (50 points each for mode and price)
+"""
         
         prompt += """
-Instructions:
-1. Use the search_cars_at_airport tool to find available vehicles
-2. The tool returns a response with a "car_offers" array. Each offer has these fields:
-   - offer_id: Unique identifier for the offer
-   - provider: Rental company name
-   - vehicle: Object with category, make, model, transmission, airConditioning, fuel, seats, doors
-   - pricing: Object with total, currency, base, taxes
-   - pickup_location: Location information
-   - dropoff_location: Location information
-3. Extract the car rental information and return it in the structured TransportOutput format
-4. For each car offer, map the fields as follows:
-   - id: Use the offer_id from the API response
-   - company: Use provider from the API response
-   - vehicle_type: Use vehicle.category from the API response (e.g., "ECONOMY", "COMPACT", "SUV", "LUXURY")
-   - vehicle_name: Combine vehicle.make and vehicle.model (e.g., "Toyota Corolla" or just model if make is not available)
-   - price_per_day: Calculate from pricing.total divided by number of days between pickup and dropoff dates
-   - total_price: Use pricing.total from the API response as a number (float)
-   - currency: Use pricing.currency from the API response (e.g., "CHF", "EUR")
-   - features: Build from vehicle properties:
-     * Include "Automatic" if transmission is "AUTOMATIC"
-     * Include "Manual" if transmission is "MANUAL"
-     * Include "Air Conditioning" if airConditioning is true
-     * Include fuel type (e.g., "Diesel", "Petrol", "Electric") if available
-     * Include "GPS" if mentioned in the offer (may not always be available)
-5. Include at least the top 5 best options that match the criteria
-6. Provide a brief search_summary describing what was found, including the airport, number of cars found, and price range
 
-IMPORTANT: You must call the search_cars_at_airport tool with the exact parameters provided above. The tool requires pickup_iata, pickup_date, and dropoff_date parameters.
+8. Create TransportLegOutput for each leg with:
+   - id: unique leg identifier
+   - from_location: origin name
+   - to_location: destination name
+   - options: list of TransportOptionOutput
+
+9. Provide a search_summary describing what was found, including which options are API-sourced vs LLM-generated.
+
+10. VALIDATION CHECK BEFORE RETURNING:
+- If itinerary_locations has {len(itinerary_locations)} location(s), you MUST have created {len(itinerary_locations) * 2} legs (to and from each location) PLUS 2 airport legs = {len(itinerary_locations) * 2 + 2} total legs minimum
+- If itinerary_locations is empty, you should have 2 legs (airport to hotel, hotel to airport)
+- Verify every location in itinerary_locations has corresponding transport legs
 """
-
+        
         logger.info("📤 Sending prompt to LLM (structured output mode)...")
         logger.info(f"   Prompt length: {len(prompt)} chars")
         logger.debug(f"Full prompt:\n{prompt}")
@@ -354,7 +482,7 @@ IMPORTANT: You must call the search_cars_at_airport tool with the exact paramete
         # With output_type=TransportOutput, result.final_output is already the typed object
         # If it's a string (fallback), we need to handle it
         if isinstance(result.final_output, TransportOutput):
-            logger.info(f"✅ Structured output received: {len(result.final_output.car_rentals)} car rentals")
+            logger.info(f"✅ Structured output received: {len(result.final_output.legs)} legs")
             return result.final_output
         elif isinstance(result.final_output, str):
             # Fallback: try to parse as JSON if string returned
@@ -374,7 +502,7 @@ IMPORTANT: You must call the search_cars_at_airport tool with the exact paramete
                 return TransportOutput(**data)
             except Exception as e:
                 logger.error(f"Failed to parse string response: {e}")
-                return TransportOutput(car_rentals=[], search_summary=f"Failed to parse response: {str(e)}")
+                return TransportOutput(legs=[], search_summary=f"Failed to parse response: {str(e)}")
         else:
             # Unknown type - try to convert
             logger.warning(f"⚠️ Unexpected output type: {type(result.final_output)}")
@@ -384,104 +512,10 @@ IMPORTANT: You must call the search_cars_at_airport tool with the exact paramete
                 elif isinstance(result.final_output, dict):
                     return TransportOutput(**result.final_output)
                 else:
-                    return TransportOutput(car_rentals=[], search_summary="Unexpected response format")
+                    return TransportOutput(legs=[], search_summary="Unexpected response format")
             except Exception as e:
                 logger.error(f"Failed to convert output: {e}")
-                return TransportOutput(car_rentals=[], search_summary=f"Failed to convert response: {str(e)}")
-    
-    async def handle_transport_query(self, query: str) -> TransportOutput:
-        """
-        Handle a general transport/car rental-related query.
-        
-        Args:
-            query: User's transport-related query
-        
-        Returns:
-            TransportOutput with structured response
-        """
-        agent = await self._create_agent()
-        
-        prompt = f"""You are a car rental and transportation assistant. Help the user with their transportation request.
-
-User Query: {query}
-
-Instructions:
-1. Use the available car rental tools to search for cars:
-   - search_cars_at_airport: For searching by airport IATA code (e.g., "LIS", "BCN", "ZRH")
-   - get_car_offer_details: For getting details about a specific offer
-2. If the user mentions an airport name, you may need to convert it to an IATA code first
-3. Extract car rental information from the tool responses and return it in the structured TransportOutput format
-4. For each car rental, provide:
-   - id: The offer_id from the API response
-   - company: The provider from the API response
-   - vehicle_type: Use vehicle.category (e.g., "ECONOMY", "COMPACT", "SUV", "LUXURY")
-   - vehicle_name: Combine vehicle.make and vehicle.model
-   - price_per_day: Calculate from pricing.total divided by number of days
-   - total_price: Use pricing.total as a number
-   - currency: Use pricing.currency from response
-   - features: Build from vehicle properties (transmission, airConditioning, fuel type)
-5. Include at least the top 5 best options
-6. Provide a brief search_summary describing what was found
-
-IMPORTANT: You must call one of the search tools (search_cars_at_airport) to get car rental data. The tool responses will have a "car_offers" array with the car rental information."""
-
-        result = await Runner.run(
-            agent,
-            input=prompt,
-        )
-        
-        # Handle structured output
-        if isinstance(result.final_output, TransportOutput):
-            return result.final_output
-        else:
-            return self._handle_output(result.final_output)
-    
-    def _handle_output(self, output: Any) -> TransportOutput:
-        """
-        Handle the agent output, converting to TransportOutput if needed.
-        
-        Args:
-            output: The raw output from Runner.run
-        
-        Returns:
-            TransportOutput with validated car rentals
-        """
-        # With output_type=TransportOutput, result should already be typed
-        if isinstance(output, TransportOutput):
-            logger.info(f"✅ Structured output received: {len(output.car_rentals)} car rentals")
-            return output
-        elif isinstance(output, str):
-            # Fallback: try to parse as JSON if string returned
-            logger.warning("⚠️ Received string instead of structured output, attempting to parse...")
-            try:
-                # Try to extract JSON from the string
-                output_str = output.strip()
-                if output_str.startswith("```json"):
-                    output_str = output_str[7:]
-                if output_str.startswith("```"):
-                    output_str = output_str[3:]
-                if output_str.endswith("```"):
-                    output_str = output_str[:-3]
-                output_str = output_str.strip()
-                
-                data = json.loads(output_str)
-                return TransportOutput(**data)
-            except Exception as e:
-                logger.error(f"Failed to parse string response: {e}")
-                return TransportOutput(car_rentals=[], search_summary=f"Failed to parse response: {str(e)}")
-        else:
-            # Unknown type - try to convert
-            logger.warning(f"⚠️ Unexpected output type: {type(output)}")
-            try:
-                if hasattr(output, 'model_dump'):
-                    return TransportOutput(**output.model_dump())
-                elif isinstance(output, dict):
-                    return TransportOutput(**output)
-                else:
-                    return TransportOutput(car_rentals=[], search_summary="Unexpected response format")
-            except Exception as e:
-                logger.error(f"Failed to convert output: {e}")
-                return TransportOutput(car_rentals=[], search_summary=f"Failed to convert response: {str(e)}")
+                return TransportOutput(legs=[], search_summary=f"Failed to convert response: {str(e)}")
     
     async def cleanup(self) -> None:
         """Clean up resources."""

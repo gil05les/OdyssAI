@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AgentSearchingAnimation } from '../AgentSearchingAnimation';
 import { AgentResultCard, DestinationCardContent } from '../AgentResultCard';
 import { Destination } from '@/data/mockAgentData';
@@ -11,10 +11,19 @@ interface DestinationAgentProps {
   error: string | null;
   onSelect: (destination: Destination) => void;
   onBack: () => void;
+  onSelectionChange?: (destination: Destination | null) => void;
 }
 
-export const DestinationAgent = ({ destinations, isLoading, error, onSelect, onBack }: DestinationAgentProps) => {
+export const DestinationAgent = ({ destinations, isLoading, error, onSelect, onBack, onSelectionChange }: DestinationAgentProps) => {
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Notify parent when selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      const destination = selected ? destinations.find(d => d.id === selected) || null : null;
+      onSelectionChange(destination);
+    }
+  }, [selected, destinations, onSelectionChange]);
 
   const handleContinue = () => {
     const destination = destinations.find(d => d.id === selected);
@@ -25,10 +34,12 @@ export const DestinationAgent = ({ destinations, isLoading, error, onSelect, onB
 
   if (isLoading) {
     return (
-      <AgentSearchingAnimation
-        agentType="destination"
-        searchText="Finding perfect destinations based on your preferences..."
-      />
+      <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+        <AgentSearchingAnimation
+          agentType="destination"
+          searchText="Finding perfect destinations based on your preferences..."
+        />
+      </div>
     );
   }
 

@@ -28,6 +28,41 @@ class ValidationSeverity(str, Enum):
 
 
 # =============================================================================
+# Preference Match Models
+# =============================================================================
+
+class FlightPreferenceMatch(BaseModel):
+    """Preference match data for a flight option."""
+    airline_match: bool = False
+    direct_match: bool = False
+    price_match: bool = False
+    time_match: bool = False
+    reasons: List[str] = Field(default_factory=list)  # Human-readable reasons
+
+
+class HotelPreferenceMatch(BaseModel):
+    """Preference match data for a hotel option."""
+    star_rating_match: bool = False
+    amenities_match: bool = False
+    price_match: bool = False
+    reasons: List[str] = Field(default_factory=list)
+
+
+class ActivityPreferenceMatch(BaseModel):
+    """Preference match data for an activity option."""
+    category_match: bool = False
+    pace_match: bool = False
+    reasons: List[str] = Field(default_factory=list)
+
+
+class TransportPreferenceMatch(BaseModel):
+    """Preference match data for a transport option."""
+    mode_match: bool = False
+    price_match: bool = False
+    reasons: List[str] = Field(default_factory=list)
+
+
+# =============================================================================
 # Request Models
 # =============================================================================
 
@@ -118,6 +153,9 @@ class FlightOption(BaseModel):
     return_arrival_time: Optional[str] = None  # Return arrival time
     return_departure_airport: Optional[str] = None  # Return departure airport
     return_arrival_airport: Optional[str] = None  # Return arrival airport
+    # Preference matching fields
+    preference_match: Optional[FlightPreferenceMatch] = None
+    preference_score: Optional[int] = None  # 0-100 score based on preference matches
 
 
 class FlightOutput(BaseModel):
@@ -147,6 +185,9 @@ class HotelOption(BaseModel):
     total_price: float
     currency: str = "CHF"
     amenities: List[str] = Field(default_factory=list)
+    # Preference matching fields
+    preference_match: Optional[HotelPreferenceMatch] = None
+    preference_score: Optional[int] = None  # 0-100 score based on preference matches
 
 
 class HotelOutput(BaseModel):
@@ -156,12 +197,15 @@ class HotelOutput(BaseModel):
 
 
 class TransportInput(BaseModel):
-    """Input schema for transport/car rental agent."""
-    pickup_iata: str  # IATA code of pickup airport
-    pickup_date: str  # YYYY-MM-DD
-    dropoff_date: str  # YYYY-MM-DD
-    pickup_time: Optional[str] = None  # HH:MM
-    dropoff_time: Optional[str] = None  # HH:MM
+    """Input schema for transport agent - receives trip context."""
+    destination_city: str
+    destination_country: str
+    hotel_address: str
+    airport_code: str
+    itinerary_locations: List[str] = Field(default_factory=list)
+    arrival_datetime: str
+    departure_datetime: str
+    group_size: int = 1
 
 
 class CarRentalOption(BaseModel):
@@ -176,9 +220,36 @@ class CarRentalOption(BaseModel):
     features: List[str] = Field(default_factory=list)
 
 
+class TransportOptionOutput(BaseModel):
+    """A transport option for a leg."""
+    id: str
+    type: str  # uber, transit, walking, driving, taxi
+    name: str
+    duration: str
+    duration_seconds: int
+    price: Optional[float] = None
+    price_range: Optional[str] = None  # e.g., "$15-20"
+    currency: str = "CHF"
+    distance: Optional[str] = None
+    steps: Optional[List[str]] = Field(default_factory=list)
+    icon: str
+    source: str = "api"  # "api" for real data, "llm" for AI-generated estimates
+    # Preference matching fields
+    preference_match: Optional[TransportPreferenceMatch] = None
+    preference_score: Optional[int] = None  # 0-100 score based on preference matches
+
+
+class TransportLegOutput(BaseModel):
+    """A single transport leg with options."""
+    id: str
+    from_location: str
+    to_location: str
+    options: List[TransportOptionOutput] = Field(default_factory=list)
+
+
 class TransportOutput(BaseModel):
     """Output schema for transport agent."""
-    car_rentals: List[CarRentalOption] = Field(default_factory=list)
+    legs: List[TransportLegOutput] = Field(default_factory=list)
     search_summary: str = ""
 
 
@@ -207,6 +278,9 @@ class ActivityOption(BaseModel):
     phone: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    # Preference matching fields
+    preference_match: Optional[ActivityPreferenceMatch] = None
+    preference_score: Optional[int] = None  # 0-100 score based on preference matches
 
 
 class ActivitiesOutput(BaseModel):
@@ -238,6 +312,9 @@ class ItineraryActivity(BaseModel):
     image: Optional[str] = None  # Image URL from Unsplash
     url: Optional[str] = None  # Clickable URL (e.g., Yelp page)
     source: str = "llm"  # "yelp" for Yelp results, "llm" for LLM suggestions
+    # Preference matching fields
+    preference_match: Optional[ActivityPreferenceMatch] = None
+    preference_score: Optional[int] = None  # 0-100 score based on preference matches
 
 
 class ItineraryDay(BaseModel):

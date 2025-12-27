@@ -63,17 +63,19 @@ class ItineraryAgent(BaseAgent):
     Extends BaseAgent to support the pluggable orchestrator architecture.
     """
     
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, user_id: Optional[int] = None):
         """
         Initialize the itinerary agent.
         
         Args:
             model: Model to use (defaults to Config.DEFAULT_MODEL)
+            user_id: Optional user ID for preference matching
         """
         super().__init__(model=model)
         self._agent_with_yelp: Optional[Agent] = None
         self._agent_llm_only: Optional[Agent] = None
         self._servers: Optional[MCPServers] = None
+        self._user_id = user_id
     
     @property
     def agent_type(self) -> AgentType:
@@ -152,16 +154,18 @@ class ItineraryAgent(BaseAgent):
             )
     
     async def _create_yelp_agent(self) -> Agent:
-        """Create the agent with mcp-activities MCP server."""
+        """Create the agent with mcp-activities and mcp-preferences MCP servers."""
         if self._agent_with_yelp is not None:
             logger.info("♻️ Reusing existing Yelp-enabled agent")
             return self._agent_with_yelp
         
-        logger.info("🔧 Creating Itinerary Agent with Yelp MCP server...")
+        logger.info("🔧 Creating Itinerary Agent with Yelp and Preferences MCP servers...")
         
-        # Ensure container is running
+        # Ensure containers are running
         logger.info(f"🐳 Checking container: {Config.MCP_ACTIVITIES_CONTAINER}")
         ensure_container_running(Config.MCP_ACTIVITIES_CONTAINER)
+        logger.info(f"🐳 Checking container: {Config.MCP_PREFERENCES_CONTAINER}")
+        ensure_container_running(Config.MCP_PREFERENCES_CONTAINER)
         
         # Get runtime permissions
         runtime_permissions = Config.get_runtime_permissions()
@@ -181,21 +185,46 @@ class ItineraryAgent(BaseAgent):
             preinstalled=True
         )
         
-        # Create and start MCP servers
-        self._servers = MCPServers(
+        # Create preferences MCP manifest
+        preferences_manifest = DevMCPManifest(
+            name="mcp-preferences",
+            description="MCP server for user preference analysis from trip history",
+            registry=Registry.PYPI,
+            package_name="sqlalchemy",
+            permissions=[
+                Permission.MCP_AC_NETWORK_CLIENT,
+                Permission.MCP_AC_SYSTEM_ENV_READ,
+            ],
+            code_mount=Config.MCP_PREFERENCES_PATH,
+            exec_command="bash /sandbox/start.sh",
+            preinstalled=True
+        )
+        
+        # Create list of MCP servers
+        servers_list = [
             SandboxedMCPStdio(
                 manifest=activities_manifest,
                 runtime_permissions=runtime_permissions,
                 remove_container_after_run=False,
                 client_session_timeout_seconds=120,  # Shorter timeout for faster fallback
+            ),
+            SandboxedMCPStdio(
+                manifest=preferences_manifest,
+                runtime_permissions=runtime_permissions,
+                remove_container_after_run=False,
+                client_session_timeout_seconds=120,
+                runtime_args=["--network", "odyssai_odyssai-network"],
             )
-        )
+        ]
         
-        logger.info("⏳ Initializing MCP server...")
+        # Create and start MCP servers
+        self._servers = MCPServers(*servers_list)
+        
+        logger.info("⏳ Initializing MCP servers...")
         await self._servers.__aenter__()
-        logger.info("✅ MCP server connected!")
+        logger.info("✅ MCP servers connected!")
         
-        # Create agent with MCP server
+        # Create agent with MCP servers
         self._agent_with_yelp = Agent(
             name="Itinerary Generation Agent (Yelp)",
             model=self.model,
@@ -227,8 +256,19 @@ class ItineraryAgent(BaseAgent):
         
         experiences_str = ', '.join(itinerary_input.experiences) if itinerary_input.experiences else 'No specific preferences'
         
-        prompt = f"""You are a travel itinerary expert. Generate a detailed {itinerary_input.num_days}-day itinerary for {itinerary_input.destination}, {itinerary_input.country}.
+        # Build preferences section if user_id is provided
+        preferences_section = ""
+        if self._user_id:
+            preferences_section = f"""
+STEP 1 - Get User Preferences:
+- Call get_itinerary_preferences with user_id={self._user_id}
+- Note their preferred activity categories, pace preference (relaxed/moderate/active), time preferences, and budget per activity
+- If has_preference is false, proceed without preference matching
 
+"""
+        
+        prompt = f"""You are a travel itinerary expert. Generate a detailed {itinerary_input.num_days}-day itinerary for {itinerary_input.destination}, {itinerary_input.country}.
+{preferences_section}
 USER PREFERENCES:
 - Destination: {itinerary_input.destination}, {itinerary_input.country}
 - Trip Duration: {itinerary_input.num_days} days
@@ -237,7 +277,7 @@ USER PREFERENCES:
 - Traveler Type: {itinerary_input.traveler_type}
 - Group Size: {itinerary_input.group_size} people
 
-USE THE YELP MCP SERVER:
+{"STEP 2 - " if self._user_id else ""}USE THE YELP MCP SERVER:
 Call the search_activities tool to find real activities. Try categories like:
 - "restaurants" for dining
 - "attractions" for tourist spots
@@ -245,7 +285,7 @@ Call the search_activities tool to find real activities. Try categories like:
 
 The tool returns activities with yelp_url - use this for the 'url' field!
 
-GENERATE A MIXED ITINERARY with 3-4 activities per day:
+{"STEP 3 - " if self._user_id else ""}GENERATE A MIXED ITINERARY with 3-4 activities per day:
 - id: Unique identifier
 - name: Activity name  
 - description: Brief 1-2 sentence description
@@ -255,7 +295,18 @@ GENERATE A MIXED ITINERARY with 3-4 activities per day:
 - time_of_day: morning, afternoon, evening, or full day
 - url: Use yelp_url from Yelp results (null for LLM suggestions)
 - source: "yelp" for Yelp results, "llm" for your suggestions
-
+"""
+        
+        # Add preference matching fields if user_id is provided
+        if self._user_id:
+            prompt += """- preference_match: Object with preference matching info (if user preferences were found):
+  * category_match: true if activity category matches user's preferred categories
+  * pace_match: true if activity fits user's pace preference
+  * reasons: List of human-readable strings explaining WHY this matches (e.g., "Cultural activity matches your interest")
+- preference_score: 0-100 score based on preference matches (50 points each for category and pace)
+"""
+        
+        prompt += """
 Mix Yelp activities (with clickable URLs) and LLM suggestions for variety.
 
 For each day:
@@ -292,6 +343,8 @@ Generate a day-by-day itinerary with 3-4 activities per day:
 - time_of_day: morning, afternoon, evening, or full day
 - url: Set to null
 - source: Set to "llm"
+- preference_match: Set to null (no preferences available in LLM-only mode)
+- preference_score: Set to null
 
 GUIDELINES:
 1. Distribute activities across morning, afternoon, and evening

@@ -19,7 +19,7 @@ const Index = () => {
         <FloatingElements />
         
         {/* Main layout */}
-        <div className="relative z-10 flex min-h-screen">
+        <div className="relative z-10 flex min-h-screen pt-16">
         {/* Main content area */}
         <main className={cn(
           "flex-1 transition-all duration-500 ease-out",
@@ -32,7 +32,7 @@ const Index = () => {
         
         {/* Chat sidebar - Desktop */}
         <aside className={cn(
-          "fixed right-0 top-0 bottom-0 w-[400px] hidden lg:block transition-transform duration-500 ease-out",
+          "fixed right-0 top-16 bottom-0 w-[400px] hidden lg:block transition-transform duration-500 ease-out",
           isChatOpen ? "translate-x-0" : "translate-x-full"
         )}>
           <ChatSidebar />
@@ -43,7 +43,7 @@ const Index = () => {
           onClick={() => setIsChatOpen(!isChatOpen)}
           size="icon"
           className={cn(
-            "fixed top-6 z-50 hidden lg:flex w-11 h-11 rounded-full transition-all duration-500 border border-gold/30",
+            "fixed top-20 z-50 hidden lg:flex w-11 h-11 rounded-full transition-all duration-500 border border-gold/30",
             "bg-midnight-light/80 backdrop-blur-sm hover:bg-gold/20 text-gold hover:text-gold-light",
             isChatOpen ? "right-[415px]" : "right-6",
             "hover:border-gold/50"
@@ -65,7 +65,7 @@ const Index = () => {
           
           {/* Chat panel */}
           <div className={cn(
-            "absolute right-0 top-0 bottom-0 w-full max-w-md transition-transform duration-300",
+            "absolute right-0 top-16 bottom-0 w-full max-w-md transition-transform duration-300",
             isChatOpen ? "translate-x-0" : "translate-x-full"
           )}>
             <Button
@@ -94,7 +94,7 @@ const Index = () => {
           <MessageCircle className="w-6 h-6" />
         </Button>
       </div>
-    </div>
+      </div>
     </TravelFormProvider>
   );
 };

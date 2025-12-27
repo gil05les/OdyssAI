@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PreferenceBadge } from '@/components/ui/PreferenceBadge';
 
 interface AgentResultCardProps {
   children: React.ReactNode;
@@ -7,6 +8,9 @@ interface AgentResultCardProps {
   onClick?: () => void;
   className?: string;
   delay?: number;
+  // Preference matching props
+  preferenceScore?: number | null;
+  preferenceReasons?: string[];
 }
 
 export const AgentResultCard = ({ 
@@ -14,7 +18,9 @@ export const AgentResultCard = ({
   selected, 
   onClick, 
   className,
-  delay = 0 
+  delay = 0,
+  preferenceScore,
+  preferenceReasons = []
 }: AgentResultCardProps) => {
   return (
     <div
@@ -35,6 +41,16 @@ export const AgentResultCard = ({
       {selected && (
         <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gold flex items-center justify-center shadow-lg animate-scale-in">
           <Check className="w-4 h-4 text-midnight" />
+        </div>
+      )}
+      
+      {/* Preference badge */}
+      {preferenceScore && preferenceScore >= 50 && (
+        <div className="absolute -top-2 left-4">
+          <PreferenceBadge 
+            score={preferenceScore} 
+            reasons={preferenceReasons}
+          />
         </div>
       )}
       
@@ -115,6 +131,9 @@ interface FlightCardContentProps {
   returnArrivalTime?: string;
   returnDepartureAirport?: string;
   returnArrivalAirport?: string;
+  // Preference matching props (passed through to parent AgentResultCard)
+  preferenceScore?: number | null;
+  preferenceReasons?: string[];
 }
 
 export const FlightCardContent = ({
@@ -262,6 +281,9 @@ interface HotelCardContentProps {
   location: string;
   rating: number;
   reviewCount: number;
+  // Preference matching props (passed through to parent AgentResultCard)
+  preferenceScore?: number | null;
+  preferenceReasons?: string[];
 }
 
 export const HotelCardContent = ({

@@ -14,7 +14,7 @@ services:
       - odyssai-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U odyssai"]
+      test: ["CMD-SHELL", "pg_isready -U odyssai -d odyssai_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,6 +40,7 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENWEATHERMAP_API_KEY=${OPENWEATHERMAP_API_KEY}
       - YELP_API_KEY=${YELP_API_KEY}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
       - DATABASE_URL=postgresql://odyssai:odyssai_password@postgres:5432/odyssai_db
     volumes:
       - ./backend:/app/backend

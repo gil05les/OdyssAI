@@ -1,4 +1,4 @@
-import { Destination, Flight, Hotel } from '@/data/mockAgentData';
+import { Destination, Flight, Hotel, TransportLeg } from '@/data/mockAgentData';
 
 export interface TripRequest {
   origin: string;
@@ -48,6 +48,15 @@ interface FlightOptionResponse {
   return_arrival_time?: string;
   return_departure_airport?: string;
   return_arrival_airport?: string;
+  // Preference matching fields
+  preference_match?: {
+    airline_match: boolean;
+    direct_match: boolean;
+    price_match: boolean;
+    time_match: boolean;
+    reasons: string[];
+  } | null;
+  preference_score?: number | null;
 }
 
 interface FlightSearchResponse {
@@ -67,6 +76,14 @@ interface HotelOptionResponse {
   total_price: number;
   currency: string;
   amenities: string[];
+  // Preference matching fields
+  preference_match?: {
+    star_rating_match: boolean;
+    amenities_match: boolean;
+    price_match: boolean;
+    reasons: string[];
+  } | null;
+  preference_score?: number | null;
 }
 
 interface HotelSearchResponse {
@@ -75,6 +92,23 @@ interface HotelSearchResponse {
 }
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+/**
+ * Get headers for API requests, including user_id for preference matching
+ */
+function getApiHeaders(): HeadersInit {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Add user_id header if logged in
+  const userId = localStorage.getItem('user_id');
+  if (userId) {
+    headers['X-User-ID'] = userId;
+  }
+  
+  return headers;
+}
 
 /**
  * Chat message interface
@@ -206,9 +240,7 @@ export async function searchFlights(request: FlightSearchRequest): Promise<Fligh
 
     const response = await fetch(`${API_BASE_URL}/api/flights`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getApiHeaders(),
       body: JSON.stringify(request),
     });
 
@@ -245,6 +277,9 @@ export async function searchFlights(request: FlightSearchRequest): Promise<Fligh
         returnArrivalTime: flight.return_arrival_time,
         returnDepartureAirport: flight.return_departure_airport,
         returnArrivalAirport: flight.return_arrival_airport,
+        // Preference matching fields
+        preference_match: flight.preference_match,
+        preference_score: flight.preference_score,
       };
     });
   } catch (error) {
@@ -262,9 +297,7 @@ export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]
 
     const response = await fetch(`${API_BASE_URL}/api/hotels`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getApiHeaders(),
       body: JSON.stringify(request),
     });
 
@@ -289,8 +322,12 @@ export async function searchHotels(request: HotelSearchRequest): Promise<Hotel[]
         ? hotel.amenities
         : ['WiFi', 'Air Conditioning', 'Room Service'], // Default amenities
       location: hotel.address || request.city_code, // Use address or fallback to city code
+      address: hotel.address, // Preserve full address separately
       rating: hotel.rating || 0, // Use rating if available, else 0
       reviewCount: hotel.review_count || 0, // Use review count if available, else 0
+      // Preference matching fields
+      preference_match: hotel.preference_match,
+      preference_score: hotel.preference_score,
     }));
   } catch (error) {
     console.error('Error searching hotels:', error);
@@ -344,6 +381,98 @@ interface ItineraryResponse {
 }
 
 /**
+ * Transport search request interface
+ */
+export interface TransportSearchRequest {
+  destination_city: string;
+  destination_country: string;
+  hotel_address: string;
+  airport_code: string;
+  itinerary_locations: string[];
+  arrival_datetime: string;
+  departure_datetime: string;
+  group_size: number;
+}
+
+/**
+ * Transport option from backend
+ */
+export interface TransportOptionResponse {
+  id: string;
+  type: string;
+  name: string;
+  duration: string;
+  duration_seconds: number;
+  price?: number;
+  price_range?: string;
+  currency: string;
+  distance?: string;
+  steps?: string[];
+  icon: string;
+  source: 'api' | 'llm';
+}
+
+/**
+ * Transport leg from backend
+ */
+export interface TransportLegResponse {
+  id: string;
+  from_location: string;
+  to_location: string;
+  options: TransportOptionResponse[];
+}
+
+/**
+ * Transport response from backend
+ */
+interface TransportResponse {
+  legs: TransportLegResponse[];
+  search_summary: string;
+}
+
+/**
+ * Search transport options for trip legs
+ */
+export async function searchTransport(request: TransportSearchRequest): Promise<TransportLeg[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/transport/search`, {
+      method: 'POST',
+      headers: getApiHeaders(),
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    }
+
+    const data: TransportResponse = await response.json();
+
+    // Convert backend format to frontend format
+    return data.legs.map((leg, index) => ({
+      id: leg.id || `leg-${index}`,
+      from: leg.from_location,
+      to: leg.to_location,
+      options: leg.options.map((option, optIndex) => ({
+        id: option.id || `opt-${index}-${optIndex}`,
+        type: option.type as 'taxi' | 'uber' | 'public' | 'rental' | 'walk',
+        name: option.name,
+        duration: option.duration,
+        price: option.price || 0,
+        icon: option.icon,
+        source: option.source || 'api', // Default to 'api' if not specified
+        // Preference matching fields
+        preference_match: (option as any).preference_match,
+        preference_score: (option as any).preference_score,
+      })),
+    }));
+  } catch (error) {
+    console.error('Error searching transport:', error);
+    throw error;
+  }
+}
+
+/**
  * Generate itinerary suggestions for a destination
  */
 export async function generateItinerary(request: ItineraryRequest): Promise<ItineraryDayResponse[]> {
@@ -352,9 +481,7 @@ export async function generateItinerary(request: ItineraryRequest): Promise<Itin
 
     const response = await fetch(`${API_BASE_URL}/api/itinerary`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getApiHeaders(),
       body: JSON.stringify(request),
     });
 

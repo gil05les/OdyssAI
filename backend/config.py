@@ -3,6 +3,7 @@ Configuration management for the travel agent backend.
 Handles environment variables and configuration settings.
 """
 import os
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -105,12 +106,26 @@ class Config:
         'mcp-activities'
     ))
     
+    MCP_TRANSPORT_PATH: str = os.path.abspath(os.path.join(
+        _project_root,
+        'mcp-servers',
+        'mcp-transport'
+    ))
+    
+    MCP_PREFERENCES_PATH: str = os.path.abspath(os.path.join(
+        _project_root,
+        'mcp-servers',
+        'mcp-preferences'
+    ))
+    
     # Container names for long-running MCP servers
     MCP_FLIGHTS_CONTAINER: str = "odyssai-mcp-flights"
     MCP_HOTELS_CONTAINER: str = "odyssai-mcp-hotels"
     MCP_CARS_CONTAINER: str = "odyssai-mcp-cars"
     MCP_GEO_CONTAINER: str = "odyssai-mcp-geo"
     MCP_ACTIVITIES_CONTAINER: str = "odyssai-mcp-activities"
+    MCP_TRANSPORT_CONTAINER: str = "odyssai-mcp-transport"
+    MCP_PREFERENCES_CONTAINER: str = "odyssai-mcp-preferences"
     
     @classmethod
     def validate(cls) -> bool:
@@ -151,9 +166,31 @@ class Config:
             return 'test.api.amadeus.com'
     
     @classmethod
+    def get_postgres_ip(cls) -> str:
+        """Get the PostgreSQL container's IP address for sandbox network access."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", "odyssai-postgres"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                ip = result.stdout.strip()
+                logger = logging.getLogger(__name__)
+                logger.info(f"📡 Resolved postgres container IP: {ip}")
+                return ip
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"⚠️  Failed to get postgres IP: {e}")
+        return None
+    
+    @classmethod
     def get_runtime_permissions(cls):
         """Get runtime permissions for MCP servers."""
-        from mcp_sandbox_openai_sdk import DomainPort, EnvironmentVariable
+        from mcp_sandbox_openai_sdk import DomainPort, HostPort, EnvironmentVariable
+        from ipaddress import IPv4Address
         
         amadeus_domain = cls.get_amadeus_domain()
         permissions = [
@@ -167,7 +204,24 @@ class Config:
             # Yelp API access (for activities)
             DomainPort(domain='api.yelp.com', port=443),
             EnvironmentVariable(name="YELP_API_KEY"),
+            # Google Maps API access
+            DomainPort(domain='maps.googleapis.com', port=443),
+            EnvironmentVariable(name="GOOGLE_MAPS_API_KEY"),
+            # Note: Uber API integration disabled - using LLM fallback
+            # No Uber API permissions needed
+            # Database access for preferences MCP
+            EnvironmentVariable(name="DATABASE_URL"),
         ]
+        
+        # Add PostgreSQL container IP to allowed connections
+        # This allows MCP sandbox containers to connect to the database
+        postgres_ip = cls.get_postgres_ip()
+        if postgres_ip:
+            try:
+                permissions.append(HostPort(host=IPv4Address(postgres_ip), port=5432))
+            except ValueError:
+                # Invalid IP address, skip
+                pass
         
         # Pass AMADEUS_ENV to the sandbox so it knows which API to use
         permissions.append(EnvironmentVariable(name="AMADEUS_ENV"))

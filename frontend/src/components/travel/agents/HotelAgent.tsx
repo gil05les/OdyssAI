@@ -12,9 +12,10 @@ interface HotelAgentProps {
   flight?: { arrivalTime?: string; arrivalAirport?: string } | null;
   onSelect: (hotel: Hotel) => void;
   onBack: () => void;
+  onSelectionChange?: (hotel: Hotel | null) => void;
 }
 
-export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack }: HotelAgentProps) => {
+export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack, onSelectionChange }: HotelAgentProps) => {
   const [isSearching, setIsSearching] = useState(true);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,14 @@ export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack 
   const [hasSearched, setHasSearched] = useState(false);
   const [retryTrigger, setRetryTrigger] = useState(0);
   const hasRetriedRef = useRef(false);
+
+  // Notify parent when selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      const hotel = selected ? hotels.find(h => h.id === selected) || null : null;
+      onSelectionChange(hotel);
+    }
+  }, [selected, hotels, onSelectionChange]);
 
   // Fetch hotels from API
   useEffect(() => {
@@ -158,10 +167,12 @@ export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack 
 
   if (isSearching) {
     return (
+      <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
       <AgentSearchingAnimation
         agentType="hotel"
         searchText={`Finding luxury stays in ${destination.name}...`}
       />
+      </div>
     );
   }
 
@@ -256,6 +267,8 @@ export const HotelAgent = ({ destination, tripRequest, flight, onSelect, onBack 
             selected={selected === hotel.id}
             onClick={() => setSelected(hotel.id)}
             delay={index * 100}
+            preferenceScore={hotel.preference_score}
+            preferenceReasons={hotel.preference_match?.reasons}
           >
             <HotelCardContent
               name={hotel.name}

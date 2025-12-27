@@ -74,16 +74,18 @@ class ActivitiesAgent(BaseAgent):
     Extends BaseAgent to support the pluggable orchestrator architecture.
     """
     
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, user_id: Optional[int] = None):
         """
         Initialize the activities agent.
         
         Args:
             model: Model to use (defaults to Config.DEFAULT_MODEL)
+            user_id: Optional user ID for preference matching
         """
         super().__init__(model=model)
         self._agent: Optional[Agent] = None
         self._servers: Optional[MCPServers] = None
+        self._user_id = user_id
     
     @property
     def agent_type(self) -> AgentType:
@@ -185,16 +187,18 @@ class ActivitiesAgent(BaseAgent):
             return error_result
     
     async def _create_agent(self) -> Agent:
-        """Create the agent with mcp-activities MCP server and structured output."""
+        """Create the agent with mcp-activities and mcp-preferences MCP servers and structured output."""
         if self._agent is not None:
             logger.info("♻️  Reusing existing Activities Agent instance")
             return self._agent
         
         logger.info("🔧 Creating new Activities Agent (with structured output)...")
         
-        # Ensure long-running container is running (started via Makefile)
+        # Ensure long-running containers are running (started via Makefile)
         logger.info(f"🐳 Checking container: {Config.MCP_ACTIVITIES_CONTAINER}")
         ensure_container_running(Config.MCP_ACTIVITIES_CONTAINER)
+        logger.info(f"🐳 Checking container: {Config.MCP_PREFERENCES_CONTAINER}")
+        ensure_container_running(Config.MCP_PREFERENCES_CONTAINER)
         
         # Get runtime permissions
         runtime_permissions = Config.get_runtime_permissions()
@@ -216,20 +220,46 @@ class ActivitiesAgent(BaseAgent):
             preinstalled=True  # Use pre-installed dependencies
         )
         
-        # Create and start MCP servers (use long-running containers)
-        logger.info("🚀 Starting MCP server connection...")
-        self._servers = MCPServers(
+        # Create preferences MCP manifest
+        logger.info("📦 Creating MCP preferences manifest...")
+        preferences_manifest = DevMCPManifest(
+            name="mcp-preferences",
+            description="MCP server for user preference analysis from trip history",
+            registry=Registry.PYPI,
+            package_name="sqlalchemy",
+            permissions=[
+                Permission.MCP_AC_NETWORK_CLIENT,
+                Permission.MCP_AC_SYSTEM_ENV_READ,
+            ],
+            code_mount=Config.MCP_PREFERENCES_PATH,
+            exec_command="bash /sandbox/start.sh",
+            preinstalled=True
+        )
+        
+        # Create list of MCP servers
+        servers_list = [
             SandboxedMCPStdio(
                 manifest=activities_manifest,
                 runtime_permissions=runtime_permissions,
                 remove_container_after_run=False,
                 client_session_timeout_seconds=300,
+            ),
+            SandboxedMCPStdio(
+                manifest=preferences_manifest,
+                runtime_permissions=runtime_permissions,
+                remove_container_after_run=False,
+                client_session_timeout_seconds=300,
+                runtime_args=["--network", "odyssai_odyssai-network"],
             )
-        )
+        ]
         
-        logger.info("⏳ Initializing MCP server (this may take a moment)...")
+        # Create and start MCP servers (use long-running containers)
+        logger.info("🚀 Starting MCP server connections...")
+        self._servers = MCPServers(*servers_list)
+        
+        logger.info("⏳ Initializing MCP servers (this may take a moment)...")
         await self._servers.__aenter__()
-        logger.info("✅ MCP server connected!")
+        logger.info("✅ MCP servers connected!")
         
         logger.info(f"🤖 Creating LLM agent with model: {self.model}")
         logger.info("📋 Using structured output: ActivitiesOutput")
@@ -283,6 +313,17 @@ class ActivitiesAgent(BaseAgent):
         agent = await self._create_agent()
         logger.debug(f"Agent instance created")
         
+        # Build preferences section if user_id is provided
+        preferences_section = ""
+        if self._user_id:
+            preferences_section = f"""
+STEP 1 - Get User Preferences:
+- Call get_itinerary_preferences with user_id={self._user_id}
+- Note their preferred activity categories, pace preference, time preferences, and budget per activity
+- If has_preference is false, proceed without preference matching
+
+"""
+        
         # Build prompt that encourages both Yelp and LLM suggestions
         prompt = f"""Search for activities in {location}.
 
@@ -294,8 +335,9 @@ Search Parameters:
         if experiences:
             prompt += f"- User interests: {', '.join(experiences)}\n"
         
-        prompt += """
+        prompt += f"""
 Instructions:
+{preferences_section}{"STEP 2 - " if self._user_id else ""}Search Activities:
 1. Use the search_activities tool to find real businesses from Yelp
 2. The tool returns activities with these fields:
    - id: Unique identifier
@@ -309,6 +351,7 @@ Instructions:
    - image_url: Image URL
    - source: "yelp" (indicates data is from Yelp)
 
+{"STEP 3 - " if self._user_id else ""}Map Results:
 3. Map the Yelp results to the ActivitiesOutput format:
    - id: Use the id from Yelp
    - name: Use the name from Yelp
@@ -322,7 +365,19 @@ Instructions:
    - url: Use yelp_url - THIS IS THE CLICKABLE LINK TO YELP
    - source: Set to "yelp" for Yelp results
    - phone, latitude, longitude: Include if available
-
+"""
+        
+        # Add preference matching instructions if user_id is provided
+        if self._user_id:
+            prompt += """
+   - preference_match: Object with preference matching info (if user preferences were found):
+     * category_match: true if activity category matches user's preferred categories
+     * pace_match: true if activity fits user's pace preference (e.g., relaxed vs active)
+     * reasons: List of human-readable strings explaining WHY this activity matches preferences (e.g., "Cultural activity matches your interest", "Fits your relaxed travel pace")
+   - preference_score: 0-100 score based on how many preferences match (50 points each for category and pace)
+"""
+        
+        prompt += """
 4. You may ALSO suggest additional activities from your own knowledge that aren't in Yelp results.
    For these, set source to "llm" and provide a good description.
    These suggestions are valuable for unique local experiences.

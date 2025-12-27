@@ -29,6 +29,7 @@ interface ItineraryAgentProps {
   tripRequest: TripRequest;
   onSelect: (activities: Activity[]) => void;
   onBack: () => void;
+  onSelectionChange?: (activities: Activity[] | null) => void;
 }
 
 // Map backend activity to frontend Activity format
@@ -61,7 +62,7 @@ const mapActivityToFrontend = (backendActivity: ItineraryActivityResponse): Acti
   };
 };
 
-export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: ItineraryAgentProps) => {
+export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack, onSelectionChange }: ItineraryAgentProps) => {
   const [isSearching, setIsSearching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [itineraryDays, setItineraryDays] = useState<ItineraryDayResponse[]>([]);
@@ -313,14 +314,32 @@ export const ItineraryAgent = ({ destination, tripRequest, onSelect, onBack }: I
     onSelect(selected);
   };
 
+  // Notify parent when selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      const activities: Activity[] = [];
+      dayAssignments.forEach((activityIds) => {
+        activityIds.forEach((id) => {
+          const activity = activityPool.get(id);
+          if (activity) {
+            activities.push(activity);
+          }
+        });
+      });
+      onSelectionChange(activities.length > 0 ? activities : null);
+    }
+  }, [dayAssignments, activityPool, onSelectionChange]);
+
   const activeActivity = activeId ? activityPool.get(activeId) : null;
 
   if (isSearching) {
     return (
-      <AgentSearchingAnimation
-        agentType="itinerary"
-        searchText={`Crafting your perfect ${destination.name} experience...`}
-      />
+      <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+        <AgentSearchingAnimation
+          agentType="itinerary"
+          searchText={`Crafting your perfect ${destination.name} experience...`}
+        />
+      </div>
     );
   }
 

@@ -174,7 +174,7 @@ const ChatSidebar = () => {
   };
 
   return (
-    <div className="flex flex-col h-full glass">
+    <div className="flex flex-col h-full w-full glass overflow-hidden">
       {/* Header */}
       <div className="p-5 border-b border-fog/10">
         <div className="flex items-center gap-4">

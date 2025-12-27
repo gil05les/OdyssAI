@@ -73,16 +73,18 @@ class HotelAgent(BaseAgent):
     Extends BaseAgent to support the pluggable orchestrator architecture.
     """
     
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, user_id: Optional[int] = None):
         """
         Initialize the hotel agent.
         
         Args:
             model: Model to use (defaults to Config.DEFAULT_MODEL)
+            user_id: Optional user ID for preference matching
         """
         super().__init__(model=model)
         self._agent: Optional[Agent] = None
         self._servers: Optional[MCPServers] = None
+        self._user_id = user_id
     
     @property
     def agent_type(self) -> AgentType:
@@ -186,16 +188,18 @@ class HotelAgent(BaseAgent):
             return error_result
     
     async def _create_agent(self) -> Agent:
-        """Create the agent with mcp-hotels MCP server and structured output."""
+        """Create the agent with mcp-hotels and mcp-preferences MCP servers and structured output."""
         if self._agent is not None:
             logger.info("♻️  Reusing existing Hotel Agent instance")
             return self._agent
         
         logger.info("🔧 Creating new Hotel Agent (with structured output)...")
         
-        # Ensure long-running container is running (started via Makefile)
+        # Ensure long-running containers are running (started via Makefile)
         logger.info(f"🐳 Checking container: {Config.MCP_HOTELS_CONTAINER}")
         ensure_container_running(Config.MCP_HOTELS_CONTAINER)
+        logger.info(f"🐳 Checking container: {Config.MCP_PREFERENCES_CONTAINER}")
+        ensure_container_running(Config.MCP_PREFERENCES_CONTAINER)
         
         # Get runtime permissions
         runtime_permissions = Config.get_runtime_permissions()
@@ -217,20 +221,46 @@ class HotelAgent(BaseAgent):
             preinstalled=True
         )
         
-        # Create and start MCP servers (use long-running containers)
-        logger.info("🚀 Starting MCP server connection...")
-        self._servers = MCPServers(
+        # Create preferences MCP manifest
+        logger.info("📦 Creating MCP preferences manifest...")
+        preferences_manifest = DevMCPManifest(
+            name="mcp-preferences",
+            description="MCP server for user preference analysis from trip history",
+            registry=Registry.PYPI,
+            package_name="sqlalchemy",
+            permissions=[
+                Permission.MCP_AC_NETWORK_CLIENT,
+                Permission.MCP_AC_SYSTEM_ENV_READ,
+            ],
+            code_mount=Config.MCP_PREFERENCES_PATH,
+            exec_command="bash /sandbox/start.sh",
+            preinstalled=True
+        )
+        
+        # Create list of MCP servers
+        servers_list = [
             SandboxedMCPStdio(
                 manifest=hotels_manifest,
                 runtime_permissions=runtime_permissions,
                 remove_container_after_run=False,
                 client_session_timeout_seconds=300,
+            ),
+            SandboxedMCPStdio(
+                manifest=preferences_manifest,
+                runtime_permissions=runtime_permissions,
+                remove_container_after_run=False,
+                client_session_timeout_seconds=300,
+                runtime_args=["--network", "odyssai_odyssai-network"],
             )
-        )
+        ]
         
-        logger.info("⏳ Initializing MCP server (this may take a moment)...")
+        # Create and start MCP servers (use long-running containers)
+        logger.info("🚀 Starting MCP server connections...")
+        self._servers = MCPServers(*servers_list)
+        
+        logger.info("⏳ Initializing MCP servers (this may take a moment)...")
         await self._servers.__aenter__()
-        logger.info("✅ MCP server connected!")
+        logger.info("✅ MCP servers connected!")
         
         logger.info(f"🤖 Creating LLM agent with model: {self.model}")
         logger.info("📋 Using structured output: HotelOutput")
@@ -285,6 +315,17 @@ class HotelAgent(BaseAgent):
         agent = await self._create_agent()
         logger.debug(f"Agent instance created")
         
+        # Build preferences section if user_id is provided
+        preferences_section = ""
+        if self._user_id:
+            preferences_section = f"""
+STEP 1 - Get User Preferences:
+- Call get_hotel_preferences with user_id={self._user_id}
+- Note their preferred star ratings, amenities, price sensitivity, and accommodation types
+- If has_preference is false, proceed without preference matching
+
+"""
+        
         prompt = f"""Search for hotels in {city_code}.
 
 Search Parameters:
@@ -296,8 +337,9 @@ Search Parameters:
         if max_price_per_night:
             prompt += f"- Maximum Price per Night: ${max_price_per_night} (filter out hotels above this price per night)\n"
         
-        prompt += """
+        prompt += f"""
 Instructions:
+{preferences_section}{"STEP 2 - " if self._user_id else ""}Search Hotels:
 1. Use the search_hotels_in_city tool to find available hotels
 2. The tool returns a response with a "hotel_offers" array. Each offer has these fields:
    - offer_id: Unique identifier for the offer
@@ -314,8 +356,9 @@ Instructions:
    - check_out: Check-out date
    - guests: Number of guests
    - nights: Number of nights
-3. Extract the hotel information and return it in the structured HotelOutput format
-4. For each hotel offer, map the fields as follows:
+
+{"STEP 3 - " if self._user_id else ""}Extract Hotel Information:
+3. For each hotel offer, map the fields as follows:
    - id: Use the offer_id from the API response
    - name: Use hotel_name from the API response
    - address: Use room_description if available, otherwise create a location description like "Located in {city_code}"
@@ -326,8 +369,22 @@ Instructions:
    - total_price: Use price_total from the API response as a number (float)
    - currency: Use currency from the API response (e.g., "CHF", "EUR")
    - amenities: Extract from room_description if it mentions amenities, otherwise use common amenities like ["WiFi", "Air Conditioning"]
-5. Include at least the top 5 best options that match the criteria (prefer lower prices if max_price_per_night is set)
-6. Provide a brief search_summary describing what was found, including the city, number of hotels found, and price range
+"""
+        
+        # Add preference matching instructions if user_id is provided
+        if self._user_id:
+            prompt += """
+   - preference_match: Object with preference matching info (if user preferences were found):
+     * star_rating_match: true if hotel rating matches user's preferred star ratings
+     * amenities_match: true if hotel has amenities the user typically prefers
+     * price_match: true if price is within user's typical range based on price_sensitivity
+     * reasons: List of human-readable strings explaining WHY this hotel matches preferences (e.g., "4-star hotel matches your preference", "Has WiFi which you typically prefer")
+   - preference_score: 0-100 score based on how many preferences match (33 points each for star_rating, amenities, price)
+"""
+        
+        prompt += """
+4. Include at least the top 5 best options that match the criteria (prefer lower prices if max_price_per_night is set)
+5. Provide a brief search_summary describing what was found, including the city, number of hotels found, and price range
 
 IMPORTANT: You must call the search_hotels_in_city tool with the exact parameters provided above. The tool requires city_code, check_in, check_out, and guests parameters.
 """

@@ -82,7 +82,7 @@ export default function Profile() {
     return (
       <div className="min-h-screen bg-midnight">
         <Header />
-        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)] pt-16">
           <Loader2 className="w-8 h-8 text-gold animate-spin" />
         </div>
       </div>
@@ -92,7 +92,7 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-midnight">
       <Header />
-      <div className="container mx-auto px-4 py-12 max-w-4xl">
+      <div className="container mx-auto px-4 py-12 max-w-4xl pt-20">
         <div className="mb-8">
           <h1 className="text-3xl font-serif text-fog mb-2">Profile Settings</h1>
           <p className="text-fog/70">Manage your personal information and preferences</p>

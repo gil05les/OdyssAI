@@ -73,16 +73,18 @@ class FlightAgent(BaseAgent):
     Extends BaseAgent to support the pluggable orchestrator architecture.
     """
     
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None, user_id: Optional[int] = None):
         """
         Initialize the flight agent.
         
         Args:
             model: Model to use (defaults to Config.DEFAULT_MODEL)
+            user_id: Optional user ID for preference matching
         """
         super().__init__(model=model)
         self._agent: Optional[Agent] = None
         self._servers: Optional[MCPServers] = None
+        self._user_id = user_id
     
     @property
     def agent_type(self) -> AgentType:
@@ -189,16 +191,18 @@ class FlightAgent(BaseAgent):
             return error_result
     
     async def _create_agent(self) -> Agent:
-        """Create the agent with mcp-flights MCP server and structured output."""
+        """Create the agent with mcp-flights and mcp-preferences MCP servers and structured output."""
         if self._agent is not None:
             logger.info("♻️  Reusing existing Flight Agent instance")
             return self._agent
         
         logger.info("🔧 Creating new Flight Agent (with structured output)...")
         
-        # Ensure long-running container is running (started via Makefile)
+        # Ensure long-running containers are running (started via Makefile)
         logger.info(f"🐳 Checking container: {Config.MCP_FLIGHTS_CONTAINER}")
         ensure_container_running(Config.MCP_FLIGHTS_CONTAINER)
+        logger.info(f"🐳 Checking container: {Config.MCP_PREFERENCES_CONTAINER}")
+        ensure_container_running(Config.MCP_PREFERENCES_CONTAINER)
         
         # Get runtime permissions
         runtime_permissions = Config.get_runtime_permissions()
@@ -220,20 +224,46 @@ class FlightAgent(BaseAgent):
             preinstalled=True
         )
         
-        # Create and start MCP servers (use long-running containers)
-        logger.info("🚀 Starting MCP server connection...")
-        self._servers = MCPServers(
+        # Create preferences MCP manifest
+        logger.info("📦 Creating MCP preferences manifest...")
+        preferences_manifest = DevMCPManifest(
+            name="mcp-preferences",
+            description="MCP server for user preference analysis from trip history",
+            registry=Registry.PYPI,
+            package_name="sqlalchemy",
+            permissions=[
+                Permission.MCP_AC_NETWORK_CLIENT,
+                Permission.MCP_AC_SYSTEM_ENV_READ,
+            ],
+            code_mount=Config.MCP_PREFERENCES_PATH,
+            exec_command="bash /sandbox/start.sh",
+            preinstalled=True
+        )
+        
+        # Create list of MCP servers
+        servers_list = [
             SandboxedMCPStdio(
                 manifest=flights_manifest,
                 runtime_permissions=runtime_permissions,
                 remove_container_after_run=False,
                 client_session_timeout_seconds=300,
+            ),
+            SandboxedMCPStdio(
+                manifest=preferences_manifest,
+                runtime_permissions=runtime_permissions,
+                remove_container_after_run=False,
+                client_session_timeout_seconds=300,
+                runtime_args=["--network", "odyssai_odyssai-network"],
             )
-        )
+        ]
         
-        logger.info("⏳ Initializing MCP server (this may take a moment)...")
+        # Create and start MCP servers (use long-running containers)
+        logger.info("🚀 Starting MCP server connections...")
+        self._servers = MCPServers(*servers_list)
+        
+        logger.info("⏳ Initializing MCP servers (this may take a moment)...")
         await self._servers.__aenter__()
-        logger.info("✅ MCP server connected!")
+        logger.info("✅ MCP servers connected!")
         
         logger.info(f"🤖 Creating LLM agent with model: {self.model}")
         logger.info("📋 Using structured output: FlightOutput")
@@ -291,6 +321,17 @@ class FlightAgent(BaseAgent):
         agent = await self._create_agent()
         logger.debug(f"Agent instance created")
         
+        # Build preferences section if user_id is provided
+        preferences_section = ""
+        if self._user_id:
+            preferences_section = f"""
+STEP 1 - Get User Preferences:
+- Call get_flight_preferences with user_id={self._user_id}
+- Note their preferred airlines, layover preference (direct vs 1-stop), price sensitivity, and departure time preferences
+- If has_preference is false, proceed without preference matching
+
+"""
+        
         prompt = f"""Search for flights from {origin} to {destination}.
 
 Search Parameters:
@@ -305,11 +346,13 @@ Search Parameters:
         if max_price:
             prompt += f"- Maximum Price: ${max_price} (filter out flights above this price)\n"
         
-        prompt += """
+        prompt += f"""
 Instructions:
+{preferences_section}{"STEP 2 - " if self._user_id else ""}Search Flights:
 1. Use the search_flights tool to find available flights
-2. Extract the flight information and return it in the structured format
-3. For each flight, provide:
+
+{"STEP 3 - " if self._user_id else ""}Extract Flight Information:
+2. For each flight, provide:
    - id: The offer ID from the API
    - airline: The airline code (e.g., "LX", "UA")
    - departure_time: Time in HH:MM format (extract from first segment's departure time)
@@ -326,10 +369,25 @@ Instructions:
    - return_arrival_time: Return arrival time in HH:MM format (extract from last segment of return itinerary, if round trip)
    - return_departure_airport: Return departure airport code (from first segment of return itinerary, if round trip)
    - return_arrival_airport: Return arrival airport code (from last segment of return itinerary, if round trip)
-4. The API response includes formatted flight numbers in the "flight_number" and "return_flight_number" fields - use these directly.
-5. For round trips, the response has two itineraries: first is outbound, second is return. Extract return flight details from the second itinerary.
-6. Include at least the top 5 cheapest options that match the criteria
-7. Provide a brief search_summary describing what was found
+"""
+        
+        # Add preference matching instructions if user_id is provided
+        if self._user_id:
+            prompt += """
+   - preference_match: Object with preference matching info (if user preferences were found):
+     * airline_match: true if airline is in user's preferred airlines list
+     * direct_match: true if stops match user's layover preference (0 stops for "direct" preference)
+     * price_match: true if price is within user's typical range based on price_sensitivity
+     * time_match: true if departure time matches user's departure_time_preference
+     * reasons: List of human-readable strings explaining WHY this flight matches preferences (e.g., "Preferred airline: SWISS", "Direct flight matches your preference")
+   - preference_score: 0-100 score based on how many preferences match (25 points each for airline, direct, price, time)
+"""
+        
+        prompt += """
+3. The API response includes formatted flight numbers in the "flight_number" and "return_flight_number" fields - use these directly.
+4. For round trips, the response has two itineraries: first is outbound, second is return. Extract return flight details from the second itinerary.
+5. Include at least the top 5 cheapest options that match the criteria
+6. Provide a brief search_summary describing what was found
 """
 
         logger.info("📤 Sending prompt to LLM (structured output mode)...")

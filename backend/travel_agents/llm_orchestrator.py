@@ -422,17 +422,25 @@ class LLMOrchestrator:
             }
         
         elif agent_name == "transport":
-            # Extract transport-specific info
-            pickup_date = None
-            dropoff_date = None
+            # Extract comprehensive trip context for transport
+            departure_date = None
+            return_date = None
             if request.date_ranges:
-                pickup_date = request.date_ranges[0].get("from")
-                dropoff_date = request.date_ranges[0].get("to")
+                departure_date = request.date_ranges[0].get("from")
+                return_date = request.date_ranges[0].get("to")
+            
+            # Get destination info (will be populated from previous agent results)
+            destination = request.destinations[0] if request.destinations else ""
             
             return {
-                "pickup_iata": request.destinations[0] if request.destinations else "",
-                "pickup_date": pickup_date or "",
-                "dropoff_date": dropoff_date or "",
+                "destination_city": destination,  # Will be refined by destination agent results
+                "destination_country": "",  # From destination agent results
+                "hotel_address": "",  # From hotel selection
+                "airport_code": "",  # From destination IATA code
+                "itinerary_locations": [],  # From itinerary agent results
+                "arrival_datetime": departure_date or "",
+                "departure_datetime": return_date or "",
+                "group_size": request.group_size,
             }
         
         # Default: pass through as-is

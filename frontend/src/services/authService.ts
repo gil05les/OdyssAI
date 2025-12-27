@@ -23,7 +23,7 @@ export interface UserProfile {
 export interface Trip {
   id: number;
   user_id: number;
-  status: 'planned' | 'booked' | 'completed';
+  status: 'planned' | 'booked' | 'completed' | 'in_progress';
   booking_reference: string | null;
   trip_data: any;
   created_at: string;
@@ -176,7 +176,7 @@ class AuthService {
   }
 
   async createTrip(userId: number, tripData: {
-    status: 'planned' | 'booked' | 'completed';
+    status: 'planned' | 'booked' | 'completed' | 'in_progress';
     booking_reference?: string;
     trip_data: any;
   }): Promise<Trip> {

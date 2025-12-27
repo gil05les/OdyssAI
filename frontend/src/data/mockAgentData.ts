@@ -1,3 +1,31 @@
+// Preference match interfaces for different entity types
+export interface FlightPreferenceMatch {
+  airline_match: boolean;
+  direct_match: boolean;
+  price_match: boolean;
+  time_match: boolean;
+  reasons: string[];
+}
+
+export interface HotelPreferenceMatch {
+  star_rating_match: boolean;
+  amenities_match: boolean;
+  price_match: boolean;
+  reasons: string[];
+}
+
+export interface ActivityPreferenceMatch {
+  category_match: boolean;
+  pace_match: boolean;
+  reasons: string[];
+}
+
+export interface TransportPreferenceMatch {
+  mode_match: boolean;
+  price_match: boolean;
+  reasons: string[];
+}
+
 export interface Destination {
   id: string;
   name: string;
@@ -29,6 +57,9 @@ export interface Flight {
   returnArrivalTime?: string;  // Return arrival time
   returnDepartureAirport?: string;  // Return departure airport
   returnArrivalAirport?: string;  // Return arrival airport
+  // Preference matching fields
+  preference_match?: FlightPreferenceMatch | null;
+  preference_score?: number | null;  // 0-100 score
 }
 
 export interface Hotel {
@@ -39,8 +70,12 @@ export interface Hotel {
   pricePerNight: number;
   amenities: string[];
   location: string;
+  address?: string; // Full address from backend (if available)
   rating: number;
   reviewCount: number;
+  // Preference matching fields
+  preference_match?: HotelPreferenceMatch | null;
+  preference_score?: number | null;  // 0-100 score
 }
 
 export interface Activity {
@@ -53,6 +88,9 @@ export interface Activity {
   category: string;
   url?: string | null;  // Yelp URL for clickable links
   source?: 'yelp' | 'llm';  // Source of the activity
+  // Preference matching fields
+  preference_match?: ActivityPreferenceMatch | null;
+  preference_score?: number | null;  // 0-100 score
 }
 
 export interface ItineraryDay {
@@ -76,6 +114,10 @@ export interface TransportOption {
   price: number;
   icon: string;
   image?: string;  // Image URL from Unsplash
+  source: 'api' | 'llm';  // Source of the transport option
+  // Preference matching fields
+  preference_match?: TransportPreferenceMatch | null;
+  preference_score?: number | null;  // 0-100 score
 }
 
 export const mockDestinations: Destination[] = [
@@ -327,9 +369,9 @@ export const mockTransportLegs: TransportLeg[] = [
     from: 'Santorini Airport (JTR)',
     to: 'Canaves Oia Epitome',
     options: [
-      { id: 'opt-1a', type: 'taxi', name: 'Private Taxi', duration: '25 min', price: 45, icon: '🚕' },
-      { id: 'opt-1b', type: 'uber', name: 'Premium Uber', duration: '25 min', price: 38, icon: '🚗' },
-      { id: 'opt-1c', type: 'public', name: 'Airport Bus', duration: '45 min', price: 8, icon: '🚌' }
+      { id: 'opt-1a', type: 'taxi', name: 'Private Taxi', duration: '25 min', price: 45, icon: '🚕', source: 'api' },
+      { id: 'opt-1b', type: 'uber', name: 'Premium Uber', duration: '25 min', price: 38, icon: '🚗', source: 'api' },
+      { id: 'opt-1c', type: 'public', name: 'Airport Bus', duration: '45 min', price: 8, icon: '🚌', source: 'api' }
     ]
   },
   {
@@ -337,9 +379,9 @@ export const mockTransportLegs: TransportLeg[] = [
     from: 'Hotel',
     to: 'Sunset Wine Tasting',
     options: [
-      { id: 'opt-2a', type: 'taxi', name: 'Hotel Taxi', duration: '15 min', price: 20, icon: '🚕' },
-      { id: 'opt-2b', type: 'rental', name: 'ATV Rental', duration: '15 min', price: 35, icon: '🛵' },
-      { id: 'opt-2c', type: 'walk', name: 'Scenic Walk', duration: '35 min', price: 0, icon: '🚶' }
+      { id: 'opt-2a', type: 'taxi', name: 'Hotel Taxi', duration: '15 min', price: 20, icon: '🚕', source: 'api' },
+      { id: 'opt-2b', type: 'rental', name: 'ATV Rental', duration: '15 min', price: 35, icon: '🛵', source: 'api' },
+      { id: 'opt-2c', type: 'walk', name: 'Scenic Walk', duration: '35 min', price: 0, icon: '🚶', source: 'api' }
     ]
   },
   {
@@ -347,8 +389,8 @@ export const mockTransportLegs: TransportLeg[] = [
     from: 'Hotel',
     to: 'Caldera Sailing Cruise',
     options: [
-      { id: 'opt-3a', type: 'taxi', name: 'Included Transfer', duration: '20 min', price: 0, icon: '🚐' },
-      { id: 'opt-3b', type: 'rental', name: 'Car Rental', duration: '20 min', price: 55, icon: '🚗' }
+      { id: 'opt-3a', type: 'taxi', name: 'Included Transfer', duration: '20 min', price: 0, icon: '🚐', source: 'api' },
+      { id: 'opt-3b', type: 'rental', name: 'Car Rental', duration: '20 min', price: 55, icon: '🚗', source: 'api' }
     ]
   },
   {
@@ -356,9 +398,9 @@ export const mockTransportLegs: TransportLeg[] = [
     from: 'Hotel',
     to: 'Santorini Airport (JTR)',
     options: [
-      { id: 'opt-4a', type: 'taxi', name: 'Private Taxi', duration: '25 min', price: 45, icon: '🚕' },
-      { id: 'opt-4b', type: 'uber', name: 'Uber', duration: '25 min', price: 35, icon: '🚗' },
-      { id: 'opt-4c', type: 'public', name: 'Local Bus', duration: '50 min', price: 5, icon: '🚌' }
+      { id: 'opt-4a', type: 'taxi', name: 'Private Taxi', duration: '25 min', price: 45, icon: '🚕', source: 'api' },
+      { id: 'opt-4b', type: 'uber', name: 'Uber', duration: '25 min', price: 35, icon: '🚗', source: 'api' },
+      { id: 'opt-4c', type: 'public', name: 'Local Bus', duration: '50 min', price: 5, icon: '🚌', source: 'api' }
     ]
   }
 ];

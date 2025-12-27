@@ -11,14 +11,23 @@ interface FlightAgentProps {
   tripRequest: TripRequest;
   onSelect: (flight: Flight) => void;
   onBack: () => void;
+  onSelectionChange?: (flight: Flight | null) => void;
 }
 
-export const FlightAgent = ({ destination, tripRequest, onSelect, onBack }: FlightAgentProps) => {
+export const FlightAgent = ({ destination, tripRequest, onSelect, onBack, onSelectionChange }: FlightAgentProps) => {
   const [isSearching, setIsSearching] = useState(true);
   const [flights, setFlights] = useState<Flight[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+
+  // Notify parent when selection changes
+  useEffect(() => {
+    if (onSelectionChange) {
+      const flight = selected ? flights.find(f => f.id === selected) || null : null;
+      onSelectionChange(flight);
+    }
+  }, [selected, flights, onSelectionChange]);
 
   // Fetch flights from API
   useEffect(() => {
@@ -99,10 +108,12 @@ export const FlightAgent = ({ destination, tripRequest, onSelect, onBack }: Flig
 
   if (isSearching) {
     return (
+      <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
       <AgentSearchingAnimation
         agentType="flight"
         searchText={`Searching for best flights to ${destination.name}...`}
       />
+      </div>
     );
   }
 
@@ -198,6 +209,8 @@ export const FlightAgent = ({ destination, tripRequest, onSelect, onBack }: Flig
             selected={selected === flight.id}
             onClick={() => setSelected(flight.id)}
             delay={index * 100}
+            preferenceScore={flight.preference_score}
+            preferenceReasons={flight.preference_match?.reasons}
           >
             <FlightCardContent
               airline={flight.airline}

@@ -14,12 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Check, Plane, Building2, Calendar, Car, RotateCcw, CreditCard, Save } from 'lucide-react';
 import { planTrip, TripRequest } from '@/services/api';
 
-interface TripPlanningWorkflowProps {
-  tripRequest: TripRequest;
-  onReset: () => void;
-}
-
-interface WorkflowState {
+export interface WorkflowState {
   destination: Destination | null;
   flight: Flight | null;
   hotel: Hotel | null;
@@ -27,19 +22,51 @@ interface WorkflowState {
   transport: Record<string, TransportOption | null>;
 }
 
-export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkflowProps) => {
+interface TripPlanningWorkflowProps {
+  tripRequest: TripRequest;
+  onReset: () => void;
+  // Props for resuming a saved trip
+  initialState?: WorkflowState;
+  initialStep?: WorkflowStep;
+  tripId?: number;
+  availableDestinations?: Destination[];
+  // Original trip status for determining save behavior
+  originalTripStatus?: 'planned' | 'in_progress';
+}
+
+export const TripPlanningWorkflow = ({ 
+  tripRequest, 
+  onReset,
+  initialState,
+  initialStep,
+  tripId: initialTripId,
+  availableDestinations,
+  originalTripStatus,
+}: TripPlanningWorkflowProps) => {
+  // Determine if we're editing an existing trip
+  const isEditingExistingTrip = !!initialTripId;
   const { user } = useAuth();
-  const [step, setStep] = useState<WorkflowStep>('destinations');
-  const [isLoading, setIsLoading] = useState(true);
-  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [step, setStep] = useState<WorkflowStep>(initialStep || 'destinations');
+  const [isLoading, setIsLoading] = useState(!initialStep); // Don't load if resuming
+  const [destinations, setDestinations] = useState<Destination[]>(availableDestinations || []);
   const [error, setError] = useState<string | null>(null);
-  const [state, setState] = useState<WorkflowState>({
+  const [state, setState] = useState<WorkflowState>(initialState || {
     destination: null,
     flight: null,
     hotel: null,
     activities: [],
     transport: {},
   });
+  const [tripId, setTripId] = useState<number | undefined>(initialTripId);
+  const [isSavingProgress, setIsSavingProgress] = useState(false);
+  // Track pending selections (selections made but not yet confirmed with "Continue")
+  const [pendingSelections, setPendingSelections] = useState<{
+    destination?: Destination;
+    flight?: Flight;
+    hotel?: Hotel;
+    activities?: Activity[];
+    transport?: Record<string, TransportOption | null>;
+  }>({});
   const [bookingData, setBookingData] = useState<{
     formData: {
       fullName: string;
@@ -113,10 +140,16 @@ export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkf
     }
   }, []);
 
-  // Fetch destinations from API on mount (skip if in test mode)
+  // Fetch destinations from API on mount (skip if in test mode or resuming with destinations)
   useEffect(() => {
     if (window.location.search.includes('test=transport')) {
       return; // Skip API call in test mode
+    }
+
+    // Skip if we already have destinations (resuming)
+    if (availableDestinations && availableDestinations.length > 0) {
+      setIsLoading(false);
+      return;
     }
 
     const fetchDestinations = async () => {
@@ -134,35 +167,77 @@ export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkf
     };
 
     fetchDestinations();
-  }, [tripRequest]);
+  }, [tripRequest, availableDestinations]);
 
   const handleDestinationSelect = (destination: Destination) => {
     setState(prev => ({ ...prev, destination }));
+    setPendingSelections(prev => ({ ...prev, destination: undefined })); // Clear pending when confirmed
     setStep('flights');
   };
 
   const handleFlightSelect = (flight: Flight) => {
     setState(prev => ({ ...prev, flight }));
+    setPendingSelections(prev => ({ ...prev, flight: undefined })); // Clear pending when confirmed
     setStep('hotels');
   };
 
   const handleHotelSelect = (hotel: Hotel) => {
     setState(prev => ({ ...prev, hotel }));
+    setPendingSelections(prev => ({ ...prev, hotel: undefined })); // Clear pending when confirmed
     setStep('itineraries');
   };
 
   const handleActivitiesSelect = (activities: Activity[]) => {
     setState(prev => ({ ...prev, activities }));
+    setPendingSelections(prev => ({ ...prev, activities: undefined })); // Clear pending when confirmed
     setStep('transport');
+  };
+
+  // Handlers for pending selections (when user selects but hasn't clicked Continue)
+  const handlePendingDestinationChange = (destination: Destination | null) => {
+    if (destination) {
+      setPendingSelections(prev => ({ ...prev, destination }));
+    }
+  };
+
+  const handlePendingFlightChange = (flight: Flight | null) => {
+    if (flight) {
+      setPendingSelections(prev => ({ ...prev, flight }));
+    }
+  };
+
+  const handlePendingHotelChange = (hotel: Hotel | null) => {
+    if (hotel) {
+      setPendingSelections(prev => ({ ...prev, hotel }));
+    }
+  };
+
+  const handlePendingActivitiesChange = (activities: Activity[] | null) => {
+    if (activities) {
+      setPendingSelections(prev => ({ ...prev, activities }));
+    }
+  };
+
+  const handlePendingTransportChange = (transport: Record<string, TransportOption | null> | null) => {
+    if (transport) {
+      setPendingSelections(prev => ({ ...prev, transport }));
+    }
   };
 
   const handleTransportComplete = (transport: Record<string, TransportOption | null>) => {
     setState(prev => ({ ...prev, transport }));
+    setPendingSelections(prev => ({ ...prev, transport: undefined })); // Clear pending when confirmed
     setStep('complete');
   };
 
   const handleCheckout = () => {
     setStep('checkout');
+  };
+
+  // Handler for clicking on workflow progress steps (when editing existing trip)
+  const handleStepClick = (clickedStep: WorkflowStep) => {
+    // Navigate to the clicked step while preserving all state
+    setStep(clickedStep);
   };
 
   const handleBookingComplete = (bookingData: {
@@ -200,7 +275,7 @@ export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkf
     Object.values(state.transport).forEach(opt => {
       if (opt) total += opt.price;
     });
-    return total;
+    return Math.round(total * 100) / 100; // Round to 2 decimal places
   };
 
   const handleSaveTrip = async () => {
@@ -214,13 +289,23 @@ export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkf
 
     setIsSavingTrip(true);
     try {
-      await authService.createTrip(user.id, {
-        status: 'planned',
-        trip_data: {
-          tripState: state,
-          tripRequest: tripRequest,
-        },
-      });
+      const tripData = {
+        tripState: state,
+        tripRequest: tripRequest,
+      };
+
+      if (tripId) {
+        // Update existing trip to 'planned' status
+        await authService.updateTrip(user.id, tripId, {
+          status: 'planned',
+          trip_data: tripData,
+        });
+      } else {
+        await authService.createTrip(user.id, {
+          status: 'planned',
+          trip_data: tripData,
+        });
+      }
       alert('Trip saved successfully!');
     } catch (error) {
       console.error('Failed to save trip:', error);
@@ -230,54 +315,196 @@ export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkf
     }
   };
 
-  return (
-    <div className="min-h-screen py-8 px-4">
-      <WorkflowProgress currentStep={step} />
+  const handleSaveProgress = async () => {
+    if (!user) {
+      // Prompt to login
+      if (confirm('Please login to save your progress. Would you like to go to the login page?')) {
+        window.location.href = '/login';
+      }
+      return;
+    }
 
-      <div className="mt-8">
+    setIsSavingProgress(true);
+    try {
+      // Merge pending selections with current state to save current selection on the page
+      const tripData = {
+        tripState: {
+          destination: pendingSelections.destination || state.destination,
+          flight: pendingSelections.flight || state.flight,
+          hotel: pendingSelections.hotel || state.hotel,
+          activities: pendingSelections.activities || state.activities,
+          transport: pendingSelections.transport || state.transport,
+        },
+        tripRequest: tripRequest,
+        currentStep: step,
+        availableDestinations: destinations,
+        // Add timestamp for tracking
+        savedAt: new Date().toISOString(),
+      };
+
+      if (tripId) {
+        // Update existing trip - preserve the original status if it was 'planned'
+        // (planned trips stay planned, in_progress stays in_progress)
+        const statusToSave = originalTripStatus === 'planned' ? 'planned' : 'in_progress';
+        await authService.updateTrip(user.id, tripId, {
+          status: statusToSave,
+          trip_data: tripData,
+        });
+      } else {
+        // Create new trip
+        const newTrip = await authService.createTrip(user.id, {
+          status: 'in_progress',
+          trip_data: tripData,
+        });
+        setTripId(newTrip.id);
+      }
+      alert('Progress saved! You can continue planning or come back later.');
+    } catch (error) {
+      console.error('Failed to save progress:', error);
+      alert('Failed to save progress. Please try again.');
+    } finally {
+      setIsSavingProgress(false);
+    }
+  };
+
+  return (
+    <div className="h-screen overflow-hidden flex flex-col">
+      <div className="pt-16 pb-2">
+        <WorkflowProgress 
+          currentStep={step} 
+          onStepClick={isEditingExistingTrip ? handleStepClick : undefined}
+          isEditing={isEditingExistingTrip}
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
         {step === 'destinations' && (
-          <DestinationAgent
-            destinations={destinations}
-            isLoading={isLoading}
-            error={error}
-            onSelect={handleDestinationSelect}
-            onBack={onReset}
-          />
+          <div className="relative min-h-full">
+            <DestinationAgent
+              destinations={destinations}
+              isLoading={isLoading}
+              error={error}
+              onSelect={handleDestinationSelect}
+              onBack={onReset}
+              onSelectionChange={handlePendingDestinationChange}
+            />
+            {user && destinations.length > 0 && !isLoading && (
+              <div className="fixed bottom-4 right-4 z-50">
+                <Button
+                  onClick={handleSaveProgress}
+                  disabled={isSavingProgress}
+                  variant="outline"
+                  className="border-teal/30 text-teal-light hover:bg-teal/10 bg-midnight/90 backdrop-blur-sm shadow-lg"
+                >
+                  <Save className="w-4 h-4 mr-2" /> 
+                  {isSavingProgress ? 'Saving...' : 'Save Progress'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {step === 'flights' && state.destination && (
-          <FlightAgent
-            destination={state.destination}
-            tripRequest={tripRequest}
-            onSelect={handleFlightSelect}
-            onBack={() => setStep('destinations')}
-          />
+          <div className="relative min-h-full">
+            <FlightAgent
+              destination={state.destination}
+              tripRequest={tripRequest}
+              onSelect={handleFlightSelect}
+              onBack={() => setStep('destinations')}
+              onSelectionChange={handlePendingFlightChange}
+            />
+            {user && (
+              <div className="fixed bottom-4 right-4 z-50">
+                <Button
+                  onClick={handleSaveProgress}
+                  disabled={isSavingProgress}
+                  variant="outline"
+                  className="border-teal/30 text-teal-light hover:bg-teal/10 bg-midnight/90 backdrop-blur-sm shadow-lg"
+                >
+                  <Save className="w-4 h-4 mr-2" /> 
+                  {isSavingProgress ? 'Saving...' : 'Save Progress'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {step === 'hotels' && state.destination && (
-          <HotelAgent
-            destination={state.destination}
-            tripRequest={tripRequest}
-            flight={state.flight}
-            onSelect={handleHotelSelect}
-            onBack={() => setStep('flights')}
-          />
+          <div className="relative min-h-full">
+            <HotelAgent
+              destination={state.destination}
+              tripRequest={tripRequest}
+              flight={state.flight}
+              onSelect={handleHotelSelect}
+              onBack={() => setStep('flights')}
+              onSelectionChange={handlePendingHotelChange}
+            />
+            {user && (
+              <div className="fixed bottom-4 right-4 z-50">
+                <Button
+                  onClick={handleSaveProgress}
+                  disabled={isSavingProgress}
+                  variant="outline"
+                  className="border-teal/30 text-teal-light hover:bg-teal/10 bg-midnight/90 backdrop-blur-sm shadow-lg"
+                >
+                  <Save className="w-4 h-4 mr-2" /> 
+                  {isSavingProgress ? 'Saving...' : 'Save Progress'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {step === 'itineraries' && state.destination && (
-          <ItineraryAgent
-            destination={state.destination}
-            tripRequest={tripRequest}
-            onSelect={handleActivitiesSelect}
-            onBack={() => setStep('hotels')}
-          />
+          <div className="relative min-h-full">
+            <ItineraryAgent
+              destination={state.destination}
+              tripRequest={tripRequest}
+              onSelect={handleActivitiesSelect}
+              onBack={() => setStep('hotels')}
+              onSelectionChange={handlePendingActivitiesChange}
+            />
+            {user && (
+              <div className="fixed bottom-4 right-4 z-50">
+                <Button
+                  onClick={handleSaveProgress}
+                  disabled={isSavingProgress}
+                  variant="outline"
+                  className="border-teal/30 text-teal-light hover:bg-teal/10 bg-midnight/90 backdrop-blur-sm shadow-lg"
+                >
+                  <Save className="w-4 h-4 mr-2" /> 
+                  {isSavingProgress ? 'Saving...' : 'Save Progress'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {step === 'transport' && (
-          <TransportAgent
-            onComplete={handleTransportComplete}
-            onBack={() => setStep('itineraries')}
-          />
+          <div className="relative min-h-full">
+            <TransportAgent
+              onComplete={handleTransportComplete}
+              onBack={() => setStep('itineraries')}
+              destination={state.destination}
+              hotel={state.hotel}
+              activities={state.activities}
+              tripRequest={tripRequest}
+              onSelectionChange={handlePendingTransportChange}
+            />
+            {user && (
+              <div className="fixed bottom-4 right-4 z-50">
+                <Button
+                  onClick={handleSaveProgress}
+                  disabled={isSavingProgress}
+                  variant="outline"
+                  className="border-teal/30 text-teal-light hover:bg-teal/10 bg-midnight/90 backdrop-blur-sm shadow-lg"
+                >
+                  <Save className="w-4 h-4 mr-2" /> 
+                  {isSavingProgress ? 'Saving...' : 'Save Progress'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {step === 'checkout' && (
@@ -395,7 +622,7 @@ export const TripPlanningWorkflow = ({ tripRequest, onReset }: TripPlanningWorkf
               <div className="p-6 rounded-2xl bg-gradient-to-r from-gold/20 to-teal/20 border border-gold/30 animate-slide-up" style={{ animationDelay: '600ms', animationFillMode: 'forwards' }}>
                 <div className="flex items-center justify-between">
                   <p className="text-xl font-serif text-fog">Estimated Total</p>
-                  <p className="text-3xl font-bold text-gold">CHF {calculateTotal()}</p>
+                  <p className="text-3xl font-bold text-gold">CHF {calculateTotal().toFixed(2)}</p>
                 </div>
               </div>
             </div>

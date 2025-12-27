@@ -47,6 +47,19 @@ MCP server for geographical destination information using RestCountries, OpenWea
 2. `get_best_travel_season` - Determine optimal travel seasons based on historical weather data from OpenWeatherMap API
 3. `get_points_of_interest` - Get points of interest near a location using Amadeus POIs API
 
+### mcp-transport
+
+MCP server for transport options including Google Maps directions and ride estimates.
+
+**Tools:**
+1. `geocode_location` - Convert addresses to coordinates using Google Maps Geocoding API
+2. `get_directions_driving` - Get driving directions with duration and distance
+3. `get_directions_transit` - Get public transit routes with steps and timing
+4. `get_directions_walking` - Get walking directions for short distances
+5. `get_uber_estimate` - Get ride price/time estimates (currently uses LLM fallback - see note below)
+
+**Note:** Uber API integration is currently disabled as we were unable to obtain an Uber API key. The `get_uber_estimate` tool always returns a graceful error that triggers LLM fallback. The LLM generates reasonable ride estimates based on distance and typical pricing patterns. All LLM-generated options are tagged with `source="llm"` for transparency.
+
 ## Setup
 
 ### Prerequisites
@@ -74,6 +87,15 @@ AMADEUS_ENV="test"                              # or "prod" for production
 OPENWEATHERMAP_API_KEY="your_openweathermap_api_key"
 ```
 
+**Required for mcp-transport:**
+```bash
+# Google Maps API (for directions and geocoding)
+GOOGLE_MAPS_API_KEY="your_google_maps_api_key"
+```
+
+**Note on Uber API:**
+Uber API integration is currently disabled as we were unable to obtain an Uber API key. The system uses LLM fallback to generate ride estimates. No Uber credentials are needed.
+
 **Optional:**
 ```bash
 # OpenAI API (for the agent)
@@ -83,7 +105,9 @@ OPENAI_API_KEY="your_openai_key"
 **Getting API Keys:**
 - **Amadeus**: Sign up at https://developers.amadeus.com/ (free test account available)
 - **OpenWeatherMap**: Sign up at https://openweathermap.org/api (free tier available with 1,000 calls/day)
+- **Google Maps**: Sign up at https://console.cloud.google.com/ (enable Geocoding API and Directions API, $200 free credit/month)
 - **RestCountries**: No API key required (free public API)
+- **Uber**: Not available - using LLM fallback for ride estimates
 
 ### Installation
 

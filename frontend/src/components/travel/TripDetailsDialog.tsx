@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -6,10 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plane, Building2, Calendar, Car, MapPin, User, Mail, Phone, Download, X, CreditCard } from 'lucide-react';
+import { Plane, Building2, Calendar, Car, MapPin, User, Mail, Phone, Download, X, CreditCard, PlayCircle, Clock, Check, Edit2 } from 'lucide-react';
 import { Trip } from '@/services/authService';
 import { generateBookingPDF } from '@/utils/pdfGenerator';
 import { TripBookingFlow } from './TripBookingFlow';
+import { cn } from '@/lib/utils';
 
 interface TripDetailsDialogProps {
   trip: Trip | null;
@@ -19,6 +21,7 @@ interface TripDetailsDialogProps {
 }
 
 export const TripDetailsDialog = ({ trip, open, onOpenChange, onTripUpdated }: TripDetailsDialogProps) => {
+  const navigate = useNavigate();
   const [showBookingFlow, setShowBookingFlow] = useState(false);
 
   if (!trip) return null;
@@ -30,6 +33,39 @@ export const TripDetailsDialog = ({ trip, open, onOpenChange, onTripUpdated }: T
   const destination = tripState?.destination;
   const dateRange = tripRequest?.date_ranges?.[0];
   const isPlanned = trip.status === 'planned';
+  const isInProgress = trip.status === 'in_progress';
+  const currentStep = tripData?.currentStep;
+
+  const getStepLabel = (step: string) => {
+    const labels: Record<string, string> = {
+      destinations: 'Selecting Destination',
+      flights: 'Choosing Flights',
+      hotels: 'Picking Hotels',
+      itineraries: 'Planning Activities',
+      transport: 'Arranging Transport',
+      complete: 'Review & Book',
+    };
+    return labels[step] || step;
+  };
+
+  const handleContinuePlanning = () => {
+    onOpenChange(false);
+    navigate(`/resume-planning/${trip.id}`);
+  };
+
+  const handleResumeAtStep = (step: string) => {
+    onOpenChange(false);
+    navigate(`/resume-planning/${trip.id}?step=${step}`);
+  };
+
+  // Define workflow steps for the step selector
+  const workflowSteps = [
+    { key: 'destinations', label: 'Destination', icon: MapPin, hasData: !!tripState?.destination },
+    { key: 'flights', label: 'Flight', icon: Plane, hasData: !!tripState?.flight },
+    { key: 'hotels', label: 'Hotel', icon: Building2, hasData: !!tripState?.hotel },
+    { key: 'itineraries', label: 'Activities', icon: Calendar, hasData: tripState?.activities?.length > 0 },
+    { key: 'transport', label: 'Transport', icon: Car, hasData: Object.values(tripState?.transport || {}).filter(Boolean).length > 0 },
+  ];
 
   const calculateTotal = () => {
     let total = 0;
@@ -387,9 +423,149 @@ export const TripDetailsDialog = ({ trip, open, onOpenChange, onTripUpdated }: T
                 </div>
               </div>
 
+              {/* In Progress Status */}
+              {isInProgress && currentStep && (
+                <div className="p-6 rounded-2xl glass-sand border border-teal/30 mb-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock className="w-5 h-5 text-teal-light" />
+                    <h3 className="text-lg font-serif text-fog">Trip In Progress</h3>
+                  </div>
+                  <p className="text-sm text-fog/80 mb-3">
+                    You stopped at: <span className="text-teal-light font-medium">{getStepLabel(currentStep)}</span>
+                  </p>
+                  
+                  {/* Progress Summary */}
+                  {(() => {
+                    const hasDestination = !!tripState?.destination;
+                    const hasFlight = !!tripState?.flight;
+                    const hasHotel = !!tripState?.hotel;
+                    const activitiesCount = tripState?.activities?.length || 0;
+                    const transportCount = Object.values(tripState?.transport || {}).filter(Boolean).length;
+                    const totalSteps = 5;
+                    const completedSteps = [
+                      hasDestination,
+                      hasFlight,
+                      hasHotel,
+                      activitiesCount > 0,
+                      transportCount > 0
+                    ].filter(Boolean).length;
+                    const progressPercentage = Math.round((completedSteps / totalSteps) * 100);
+                    
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-fog/60">Progress</span>
+                          <span className="text-teal-light font-medium">{progressPercentage}%</span>
+                        </div>
+                        <div className="w-full bg-fog/10 rounded-full h-2">
+                          <div 
+                            className="bg-teal-light h-2 rounded-full transition-all"
+                            style={{ width: `${progressPercentage}%` }}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-fog/70 mt-2">
+                          {hasDestination && (
+                            <div className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-gold" />
+                              <span>Destination selected</span>
+                            </div>
+                          )}
+                          {hasFlight && (
+                            <div className="flex items-center gap-1">
+                              <Plane className="w-3 h-3 text-gold" />
+                              <span>Flight selected</span>
+                            </div>
+                          )}
+                          {hasHotel && (
+                            <div className="flex items-center gap-1">
+                              <Building2 className="w-3 h-3 text-gold" />
+                              <span>Hotel selected</span>
+                            </div>
+                          )}
+                          {activitiesCount > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-gold" />
+                              <span>{activitiesCount} activities</span>
+                            </div>
+                          )}
+                          {transportCount > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Car className="w-3 h-3 text-gold" />
+                              <span>{transportCount} transport</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Resume/Edit at Step - for both planned and in_progress trips */}
+              {(isPlanned || isInProgress) && (
+                <div className="p-6 rounded-2xl glass-sand">
+                  <h3 className="text-lg font-serif text-fog mb-4 flex items-center gap-2">
+                    <Edit2 className="w-5 h-5 text-gold" />
+                    Edit Trip
+                  </h3>
+                  <p className="text-sm text-fog/70 mb-4">
+                    Click any step to resume or edit your trip from that point
+                  </p>
+                  <div className="space-y-2">
+                    {workflowSteps.map((step) => {
+                      const Icon = step.icon;
+                      return (
+                        <button
+                          key={step.key}
+                          onClick={() => handleResumeAtStep(step.key)}
+                          className={cn(
+                            "w-full flex items-center gap-3 p-3 rounded-xl transition-all",
+                            "hover:bg-gold/10 hover:border-gold/30 border border-transparent",
+                            "group cursor-pointer text-left"
+                          )}
+                        >
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
+                            step.hasData 
+                              ? "bg-gold/20 text-gold" 
+                              : "bg-fog/10 text-fog/40"
+                          )}>
+                            {step.hasData ? (
+                              <Check className="w-4 h-4" />
+                            ) : (
+                              <Icon className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <p className={cn(
+                              "text-sm font-medium",
+                              step.hasData ? "text-fog" : "text-fog/60"
+                            )}>
+                              {step.label}
+                            </p>
+                            <p className="text-xs text-fog/50">
+                              {step.hasData ? 'Click to edit' : 'Click to add'}
+                            </p>
+                          </div>
+                          <Edit2 className="w-4 h-4 text-fog/30 group-hover:text-gold transition-colors" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="p-6 rounded-2xl glass-sand">
                 <div className="space-y-3">
+                  {isInProgress && (
+                    <Button
+                      onClick={handleContinuePlanning}
+                      className="w-full bg-teal hover:bg-teal/90 text-midnight"
+                    >
+                      <PlayCircle className="w-4 h-4 mr-2" /> Continue Planning
+                    </Button>
+                  )}
                   {isPlanned && (
                     <Button
                       onClick={() => setShowBookingFlow(true)}

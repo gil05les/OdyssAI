@@ -39,6 +39,9 @@ from models import (
     ItineraryInput,
     ItineraryOutput,
     ItineraryDay,
+    TransportInput,
+    TransportOutput,
+    TransportLegOutput,
     ChatRequest,
     ChatResponse,
     ChatMessage,
@@ -47,6 +50,7 @@ from travel_agents.llm_orchestrator import LLMOrchestrator
 from travel_agents.flight_agent import FlightAgent
 from travel_agents.hotel_agent import HotelAgent
 from travel_agents.itinerary_agent import ItineraryAgent
+from travel_agents.transport_agent import TransportAgent
 from config import Config
 from services.image_service import fetch_destination_image, fetch_activity_image, fetch_transport_image
 from services.temperature_service import fetch_temperature_range
@@ -116,11 +120,8 @@ async def log_requests(request: Request, call_next):
     
     return response
 
-# Global agent instances
+# Global agent instances - note: agents with user_id need to be created per request
 _orchestrator: Optional[LLMOrchestrator] = None
-_flight_agent: Optional[FlightAgent] = None
-_hotel_agent: Optional[HotelAgent] = None
-_itinerary_agent: Optional[ItineraryAgent] = None
 
 
 async def get_orchestrator() -> LLMOrchestrator:
@@ -158,19 +159,10 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up resources on shutdown."""
-    global _orchestrator, _flight_agent, _hotel_agent, _itinerary_agent
+    global _orchestrator
     if _orchestrator:
         await _orchestrator.cleanup()
         _orchestrator = None
-    if _flight_agent:
-        await _flight_agent.cleanup()
-        _flight_agent = None
-    if _hotel_agent:
-        await _hotel_agent.cleanup()
-        _hotel_agent = None
-    if _itinerary_agent:
-        await _itinerary_agent.cleanup()
-        _itinerary_agent = None
 
 
 # Helper function to get current user from header (mock auth)
@@ -444,32 +436,31 @@ async def list_agents():
     }
 
 
-async def get_flight_agent() -> FlightAgent:
-    """Get or create flight agent instance."""
-    global _flight_agent
-    if _flight_agent is None:
-        _flight_agent = FlightAgent(model=Config.DEFAULT_MODEL)
-    return _flight_agent
+def create_flight_agent(user_id: Optional[int] = None) -> FlightAgent:
+    """Create a flight agent instance with optional user_id for preference matching."""
+    return FlightAgent(model=Config.DEFAULT_MODEL, user_id=user_id)
 
 
-async def get_hotel_agent() -> HotelAgent:
-    """Get or create hotel agent instance."""
-    global _hotel_agent
-    if _hotel_agent is None:
-        _hotel_agent = HotelAgent(model=Config.DEFAULT_MODEL)
-    return _hotel_agent
+def create_hotel_agent(user_id: Optional[int] = None) -> HotelAgent:
+    """Create a hotel agent instance with optional user_id for preference matching."""
+    return HotelAgent(model=Config.DEFAULT_MODEL, user_id=user_id)
 
 
-async def get_itinerary_agent() -> ItineraryAgent:
-    """Get or create itinerary agent instance."""
-    global _itinerary_agent
-    if _itinerary_agent is None:
-        _itinerary_agent = ItineraryAgent(model=Config.DEFAULT_MODEL)
-    return _itinerary_agent
+def create_itinerary_agent(user_id: Optional[int] = None) -> ItineraryAgent:
+    """Create an itinerary agent instance with optional user_id for preference matching."""
+    return ItineraryAgent(model=Config.DEFAULT_MODEL, user_id=user_id)
+
+
+def create_transport_agent(user_id: Optional[int] = None) -> TransportAgent:
+    """Create a transport agent instance with optional user_id for preference matching."""
+    return TransportAgent(model=Config.DEFAULT_MODEL, user_id=user_id)
 
 
 @app.post("/api/flights", response_model=FlightOutput)
-async def search_flights(request: FlightInput):
+async def search_flights(
+    request: FlightInput,
+    current_user_id: Optional[int] = Depends(get_current_user)
+):
     """
     Search for flights between origin and destination.
     
@@ -483,7 +474,7 @@ async def search_flights(request: FlightInput):
             - max_price: Optional budget filter
     
     Returns:
-        FlightOutput with list of flight options
+        FlightOutput with list of flight options (with preference matching if logged in)
     """
     import time
     start_time = time.time()
@@ -496,6 +487,7 @@ async def search_flights(request: FlightInput):
     logger.info(f"  Return:     {request.return_date or 'One-way'}")
     logger.info(f"  Passengers: {request.adults}")
     logger.info(f"  Max Price:  ${request.max_price}" if request.max_price else "  Max Price:  No limit")
+    logger.info(f"  User ID:    {current_user_id or 'Not logged in'}")
     logger.info("-" * 70)
     
     try:
@@ -507,9 +499,9 @@ async def search_flights(request: FlightInput):
                 detail="Server configuration is invalid. Please check environment variables."
             )
         
-        # Get flight agent
-        logger.info("📡 Getting Flight Agent...")
-        flight_agent = await get_flight_agent()
+        # Create flight agent with user_id for preference matching
+        logger.info("📡 Creating Flight Agent...")
+        flight_agent = create_flight_agent(user_id=current_user_id)
         
         # Execute flight search
         logger.info("🔍 Executing flight search...")
@@ -540,6 +532,9 @@ async def search_flights(request: FlightInput):
         
         logger.info("=" * 70)
         
+        # Clean up agent
+        await flight_agent.cleanup()
+        
         return FlightOutput(
             flights=[FlightOption(**f) if isinstance(f, dict) else f for f in flights_data],
             search_summary=search_summary
@@ -559,7 +554,10 @@ async def search_flights(request: FlightInput):
 
 
 @app.post("/api/hotels", response_model=HotelOutput)
-async def search_hotels(request: HotelInput):
+async def search_hotels(
+    request: HotelInput,
+    current_user_id: Optional[int] = Depends(get_current_user)
+):
     """
     Search for hotels in a specific city.
     
@@ -572,7 +570,7 @@ async def search_hotels(request: HotelInput):
             - max_price_per_night: Optional maximum price per night filter
     
     Returns:
-        HotelOutput with list of hotel options
+        HotelOutput with list of hotel options (with preference matching if logged in)
     """
     import time
     start_time = time.time()
@@ -585,6 +583,7 @@ async def search_hotels(request: HotelInput):
     logger.info(f"  Check-out:   {request.check_out}")
     logger.info(f"  Guests:      {request.guests}")
     logger.info(f"  Max Price:   ${request.max_price_per_night}/night" if request.max_price_per_night else "  Max Price:   No limit")
+    logger.info(f"  User ID:     {current_user_id or 'Not logged in'}")
     logger.info("-" * 70)
     
     try:
@@ -596,9 +595,9 @@ async def search_hotels(request: HotelInput):
                 detail="Server configuration is invalid. Please check environment variables."
             )
         
-        # Get hotel agent
-        logger.info("📡 Getting Hotel Agent...")
-        hotel_agent = await get_hotel_agent()
+        # Create hotel agent with user_id for preference matching
+        logger.info("📡 Creating Hotel Agent...")
+        hotel_agent = create_hotel_agent(user_id=current_user_id)
         
         # Execute hotel search
         logger.info("🔍 Executing hotel search...")
@@ -629,6 +628,9 @@ async def search_hotels(request: HotelInput):
         
         logger.info("=" * 70)
         
+        # Clean up agent
+        await hotel_agent.cleanup()
+        
         return HotelOutput(
             hotels=[HotelOption(**h) if isinstance(h, dict) else h for h in hotels_data],
             search_summary=search_summary
@@ -648,7 +650,10 @@ async def search_hotels(request: HotelInput):
 
 
 @app.post("/api/itinerary", response_model=ItineraryOutput)
-async def generate_itinerary(request: ItineraryInput):
+async def generate_itinerary(
+    request: ItineraryInput,
+    current_user_id: Optional[int] = Depends(get_current_user)
+):
     """
     Generate a day-by-day itinerary with activity suggestions.
     
@@ -663,7 +668,7 @@ async def generate_itinerary(request: ItineraryInput):
             - group_size: Number of travelers
     
     Returns:
-        ItineraryOutput with day-by-day activity suggestions
+        ItineraryOutput with day-by-day activity suggestions (with preference matching if logged in)
     """
     import time
     start_time = time.time()
@@ -676,6 +681,7 @@ async def generate_itinerary(request: ItineraryInput):
     logger.info(f"  Experiences:  {', '.join(request.experiences) if request.experiences else 'None specified'}")
     logger.info(f"  Budget:       ${request.budget[0]:,} - ${request.budget[1]:,}")
     logger.info(f"  Traveler:     {request.traveler_type} ({request.group_size} people)")
+    logger.info(f"  User ID:      {current_user_id or 'Not logged in'}")
     logger.info("-" * 70)
     
     try:
@@ -687,9 +693,9 @@ async def generate_itinerary(request: ItineraryInput):
                 detail="Server configuration is invalid. Please check environment variables."
             )
         
-        # Get itinerary agent
-        logger.info("📡 Getting Itinerary Agent...")
-        itinerary_agent = await get_itinerary_agent()
+        # Create itinerary agent with user_id for preference matching
+        logger.info("📡 Creating Itinerary Agent...")
+        itinerary_agent = create_itinerary_agent(user_id=current_user_id)
         
         # Execute itinerary generation
         logger.info("🔍 Generating itinerary...")
@@ -733,6 +739,9 @@ async def generate_itinerary(request: ItineraryInput):
         
         logger.info("=" * 70)
         
+        # Clean up agent
+        await itinerary_agent.cleanup()
+        
         return ItineraryOutput(
             days=[ItineraryDay(**d) if isinstance(d, dict) else d for d in days_data]
         )
@@ -747,6 +756,117 @@ async def generate_itinerary(request: ItineraryInput):
         raise HTTPException(
             status_code=500,
             detail=f"Error generating itinerary: {str(e)}"
+        )
+
+
+@app.post("/api/transport/search", response_model=TransportOutput)
+async def search_transport(
+    request: TransportInput,
+    current_user_id: Optional[int] = Depends(get_current_user)
+):
+    """
+    Search for transport options for all trip legs.
+    
+    Args:
+        request: TransportInput with trip context:
+            - destination_city: Destination city name
+            - destination_country: Destination country name
+            - hotel_address: Hotel address
+            - airport_code: Airport IATA code
+            - itinerary_locations: List of key locations from itinerary
+            - arrival_datetime: Arrival date/time
+            - departure_datetime: Departure date/time
+            - group_size: Number of travelers (default: 1)
+    
+    Returns:
+        TransportOutput with transport legs and options (with preference matching if logged in)
+    """
+    import time
+    start_time = time.time()
+    
+    logger.info("=" * 70)
+    logger.info("🚗 API: /api/transport/search - Transport Search Request")
+    logger.info("=" * 70)
+    logger.info(f"  Destination: {request.destination_city}, {request.destination_country}")
+    logger.info(f"  Hotel:       {request.hotel_address}")
+    logger.info(f"  Airport:     {request.airport_code}")
+    logger.info(f"  Locations:   {len(request.itinerary_locations)} key locations")
+    logger.info(f"  Arrival:     {request.arrival_datetime}")
+    logger.info(f"  Departure:   {request.departure_datetime}")
+    logger.info(f"  Group Size:  {request.group_size}")
+    logger.info(f"  User ID:     {current_user_id or 'Not logged in'}")
+    logger.info("-" * 70)
+    
+    try:
+        # Validate configuration
+        if not Config.validate():
+            logger.error("❌ Configuration validation failed!")
+            raise HTTPException(
+                status_code=500,
+                detail="Server configuration is invalid. Please check environment variables."
+            )
+        
+        # Create transport agent with user_id for preference matching
+        logger.info("📡 Creating Transport Agent...")
+        transport_agent = create_transport_agent(user_id=current_user_id)
+        
+        # Execute transport search
+        logger.info("🔍 Executing transport search...")
+        result = await transport_agent.execute(request.model_dump())
+        
+        elapsed = time.time() - start_time
+        
+        if not result.success:
+            logger.error(f"❌ Transport search failed after {elapsed:.2f}s: {result.error}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Transport search failed: {result.error}"
+            )
+        
+        # Extract legs from result
+        legs_data = result.data.get("legs", []) if result.data else []
+        search_summary = result.data.get("search_summary", "") if result.data else ""
+        
+        logger.info("-" * 70)
+        logger.info(f"✅ Transport search completed in {elapsed:.2f}s")
+        logger.info(f"   Found {len(legs_data)} transport legs")
+        
+        # Count API vs LLM options
+        api_count = 0
+        llm_count = 0
+        for leg in legs_data:
+            if isinstance(leg, dict):
+                for option in leg.get("options", []):
+                    if isinstance(option, dict):
+                        source = option.get("source", "api")
+                        if source == "llm":
+                            llm_count += 1
+                        else:
+                            api_count += 1
+        
+        if api_count > 0 or llm_count > 0:
+            logger.info(f"   Options: {api_count} API-sourced, {llm_count} LLM-generated")
+        
+        logger.info("=" * 70)
+        
+        # Clean up agent
+        await transport_agent.cleanup()
+        
+        return TransportOutput(
+            legs=[TransportLegOutput(**leg) if isinstance(leg, dict) else leg for leg in legs_data],
+            search_summary=search_summary
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        elapsed = time.time() - start_time
+        logger.error(f"❌ Error searching transport after {elapsed:.2f}s: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error searching transport: {str(e)}"
         )
 
 
